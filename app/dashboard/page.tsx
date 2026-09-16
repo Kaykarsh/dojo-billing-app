@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
 
 interface OverviewStats {
   activeStudentsCount: number;
@@ -22,45 +21,11 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const res = await fetch('/api/auth/me');
-        if (!res.ok) return;
-        const { user } = await res.json();
-        if (!user) return;
-
-        const { data: instructor } = await supabase
-          .from('instructors')
-          .select('business_name')
-          .eq('id', user.id)
-          .single();
-
-        const { data: enrollments } = await supabase
-          .from('enrollments')
-          .select('amount_paid, payment_cadence, status')
-          .eq('instructor_id', user.id);
-
-        let activeCount = 0;
-        let pastDueCount = 0;
-        let estimatedMonthly = 0;
-
-        enrollments?.forEach((item) => {
-          if (item.status === 'active') {
-            activeCount += 1;
-            if (item.payment_cadence === 'weekly') {
-              estimatedMonthly += Number(item.amount_paid || 0) * 4.33;
-            } else {
-              estimatedMonthly += Number(item.amount_paid || 0) / 3;
-            }
-          } else if (item.status === 'past_due') {
-            pastDueCount += 1;
-          }
-        });
-
-        setStats({
-          activeStudentsCount: activeCount,
-          pastDueCount,
-          monthlyRevenue: Math.round(estimatedMonthly),
-          businessName: instructor?.business_name || 'My Dojo',
-        });
+        const res = await fetch('/api/dashboard/stats');
+        if (res.ok) {
+          const data = await res.json();
+          setStats(data.stats);
+        }
       } catch (err) {
         console.error('Error loading dashboard stats:', err);
       } finally {

@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
 
 interface EventRecord {
   id: string;
@@ -19,25 +18,18 @@ export default function DashboardEventsPage() {
   const [amount, setAmount] = useState('');
   const [eventDate, setEventDate] = useState('');
 
-  const getUserId = async () => {
-    const res = await fetch('/api/auth/me');
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.user?.id || null;
-  };
-
   const loadEvents = async () => {
-    const userId = await getUserId();
-    if (!userId) return;
-
-    const { data } = await supabase
-      .from('events')
-      .select('*')
-      .eq('instructor_id', userId)
-      .order('event_date', { ascending: true });
-
-    if (data) setEvents(data);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/events');
+      if (res.ok) {
+        const data = await res.json();
+        setEvents(data.events || []);
+      }
+    } catch (err) {
+      console.error('Failed to load events:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -46,18 +38,20 @@ export default function DashboardEventsPage() {
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    const userId = await getUserId();
-    if (!userId) return;
 
-    const { error } = await supabase.from('events').insert({
-      instructor_id: userId,
-      title,
-      amount: Number(amount),
-      event_date: eventDate,
+    const res = await fetch('/api/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        amount,
+        event_date: eventDate,
+      }),
     });
 
-    if (error) {
-      alert(`Error creating event: ${error.message}`);
+    if (!res.ok) {
+      const data = await res.json();
+      alert(`Error creating event: ${data.error}`);
     } else {
       setIsModalOpen(false);
       setTitle('');
@@ -78,7 +72,7 @@ export default function DashboardEventsPage() {
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="bg-black text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-gray-800 transition shadow-sm"
+          className="bg-black text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-gray-800 transition shadow-sm cursor-pointer"
         >
           + Create Event
         </button>
@@ -150,11 +144,11 @@ export default function DashboardEventsPage() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl font-bold text-gray-700 hover:bg-gray-100"
+                  className="px-4 py-2 rounded-xl font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
                 >
                   Cancel
                 </button>
-                <button type="submit" className="px-4 py-2 rounded-xl font-bold bg-black text-white hover:bg-gray-800">
+                <button type="submit" className="px-4 py-2 rounded-xl font-bold bg-black text-white hover:bg-gray-800 cursor-pointer">
                   Save Event
                 </button>
               </div>

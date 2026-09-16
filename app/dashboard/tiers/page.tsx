@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
 
 interface PricingTier {
   id: string;
@@ -44,25 +43,18 @@ export default function PricingTiersPage() {
 
   const [formData, setFormData] = useState(initialFormState);
 
-  const getUserId = async () => {
-    const res = await fetch('/api/auth/me');
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.user?.id || null;
-  };
-
   const loadTiers = async () => {
-    const userId = await getUserId();
-    if (!userId) return;
-
-    const { data } = await supabase
-      .from('pricing_tiers')
-      .select('*')
-      .eq('instructor_id', userId)
-      .order('created_at', { ascending: true });
-
-    if (data) setTiers(data);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/tiers');
+      if (res.ok) {
+        const data = await res.json();
+        setTiers(data.tiers || []);
+      }
+    } catch (err) {
+      console.error('Failed to load tiers:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -97,11 +89,8 @@ export default function PricingTiersPage() {
 
   const handleSaveTier = async (e: React.FormEvent) => {
     e.preventDefault();
-    const userId = await getUserId();
-    if (!userId) return;
 
     const payload = {
-      instructor_id: userId,
       name: formData.name,
       tier_type: formData.tier_type,
       days_per_week: Number(formData.days_per_week),
@@ -117,21 +106,18 @@ export default function PricingTiersPage() {
       is_popular: formData.is_popular,
     };
 
-    let error;
-    if (editingTierId) {
-      const res = await supabase
-        .from('pricing_tiers')
-        .update(payload)
-        .eq('id', editingTierId)
-        .eq('instructor_id', userId);
-      error = res.error;
-    } else {
-      const res = await supabase.from('pricing_tiers').insert(payload);
-      error = res.error;
-    }
+    const method = editingTierId ? 'PUT' : 'POST';
+    const body = editingTierId ? JSON.stringify({ id: editingTierId, ...payload }) : JSON.stringify(payload);
 
-    if (error) {
-      alert(`Error saving tier: ${error.message}`);
+    const res = await fetch('/api/tiers', {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(`Error saving tier: ${data.error}`);
     } else {
       setIsModalOpen(false);
       setEditingTierId(null);
@@ -151,7 +137,7 @@ export default function PricingTiersPage() {
         </div>
         <button
           onClick={handleOpenAddModal}
-          className="bg-black text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-gray-800 transition shadow-sm"
+          className="bg-black text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-gray-800 transition shadow-sm cursor-pointer"
         >
           + Add New Tier
         </button>
@@ -186,7 +172,7 @@ export default function PricingTiersPage() {
                   )}
                   <button
                     onClick={() => handleOpenEditModal(tier)}
-                    className="text-xs font-bold text-gray-700 hover:text-black hover:bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200 transition"
+                    className="text-xs font-bold text-gray-700 hover:text-black hover:bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200 transition cursor-pointer"
                   >
                     Edit
                   </button>
@@ -378,13 +364,13 @@ export default function PricingTiersPage() {
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl font-bold text-gray-700 hover:bg-gray-100 transition"
+                  className="px-4 py-2 rounded-xl font-bold text-gray-700 hover:bg-gray-100 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl font-bold bg-black text-white hover:bg-gray-800 transition shadow-sm"
+                  className="px-4 py-2 rounded-xl font-bold bg-black text-white hover:bg-gray-800 transition shadow-sm cursor-pointer"
                 >
                   {editingTierId ? 'Update Tier' : 'Save Tier'}
                 </button>
