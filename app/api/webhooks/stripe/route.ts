@@ -132,7 +132,7 @@ export async function POST(request: Request) {
         console.log(`Successfully completed enrollment for student ${studentId}`);
       }
 
-      // If weekly subscription with fixed commitment, attach Subscription Schedule to auto-terminate
+      // Handle commitment weeks subscription schedule if applicable
       if (subscriptionId) {
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         const commitmentWeeks = Number(subscription.metadata?.commitmentWeeks || 0);
@@ -142,34 +142,22 @@ export async function POST(request: Request) {
             from_subscription: subscriptionId,
           });
 
-    if (subscriptionId) {
-    const subscription = await stripe.subscriptions.retrieve(subscriptionId);
-    const commitmentWeeks = Number(subscription.metadata?.commitmentWeeks || 0);
+          const startDate = schedule.phases[0].start_date;
+          const endDate = startDate + commitmentWeeks * 7 * 24 * 60 * 60;
 
-    if (commitmentWeeks > 0) {
-        const schedule = await stripe.subscriptionSchedules.create({
-        from_subscription: subscriptionId,
-        });
-
-        const startDate = schedule.phases[0].start_date;
-        // Calculate end date: start date + (commitmentWeeks * 7 days * 24 hours * 3600 seconds)
-        const endDate = startDate + commitmentWeeks * 7 * 24 * 60 * 60;
-
-        await stripe.subscriptionSchedules.update(schedule.id, {
-        end_behavior: 'cancel',
-        phases: [
-            {
-            start_date: startDate,
-            end_date: endDate,
-            items: schedule.phases[0].items.map((item) => ({
-                price: typeof item.price === 'string' ? item.price : item.price.id,
-                quantity: item.quantity,
-            })),
-            },
-        ],
-        });
-    }
-}
+          await stripe.subscriptionSchedules.update(schedule.id, {
+            end_behavior: 'cancel',
+            phases: [
+              {
+                start_date: startDate,
+                end_date: endDate,
+                items: schedule.phases[0].items.map((item) => ({
+                  price: typeof item.price === 'string' ? item.price : item.price.id,
+                  quantity: item.quantity,
+                })),
+              },
+            ],
+          });
         }
       }
     } catch (err: any) {
