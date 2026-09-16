@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -16,16 +15,26 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMsg(null);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (error) {
-      setErrorMsg(error.message);
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setErrorMsg(data.error || 'Invalid login credentials');
+        setLoading(false);
+      } else {
+        // Refresh server components and navigate to dashboard
+        router.refresh();
+        router.push('/dashboard');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'An unexpected error occurred');
       setLoading(false);
-    } else {
-      router.push('/dashboard');
     }
   };
 
@@ -53,7 +62,7 @@ export default function LoginPage() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black text-gray-900"
             />
           </div>
 
@@ -66,14 +75,14 @@ export default function LoginPage() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black text-gray-900"
             />
           </div>
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-black text-white font-semibold py-2.5 rounded-xl hover:bg-gray-800 transition text-sm disabled:opacity-50"
+            className="w-full bg-black text-white font-semibold py-2.5 rounded-xl hover:bg-gray-800 transition text-sm disabled:opacity-50 cursor-pointer"
           >
             {loading ? 'Authenticating...' : 'Sign In'}
           </button>

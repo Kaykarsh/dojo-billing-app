@@ -22,17 +22,17 @@ export default function DashboardPage() {
   useEffect(() => {
     async function loadDashboardData() {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const res = await fetch('/api/auth/me');
+        if (!res.ok) return;
+        const { user } = await res.json();
         if (!user) return;
 
-        // Fetch instructor details
         const { data: instructor } = await supabase
           .from('instructors')
           .select('business_name')
           .eq('id', user.id)
           .single();
 
-        // Fetch active enrollments
         const { data: enrollments } = await supabase
           .from('enrollments')
           .select('amount_paid, payment_cadence, status')
@@ -48,7 +48,7 @@ export default function DashboardPage() {
             if (item.payment_cadence === 'weekly') {
               estimatedMonthly += Number(item.amount_paid || 0) * 4.33;
             } else {
-              estimatedMonthly += Number(item.amount_paid || 0) / 3; // Approx 3-month term
+              estimatedMonthly += Number(item.amount_paid || 0) / 3;
             }
           } else if (item.status === 'past_due') {
             pastDueCount += 1;
@@ -82,7 +82,6 @@ export default function DashboardPage() {
         <p className="text-xs text-gray-500 mt-0.5">Performance & Roster Overview</p>
       </div>
 
-      {/* Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-1">
           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">

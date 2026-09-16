@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { stripe } from '@/lib/stripe';
-import { supabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 export async function POST(request: Request) {
   const body = await request.text();
@@ -23,11 +23,34 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `Webhook error: ${err.message}` }, { status: 400 });
   }
 
+  // Use the admin client to bypass Row Level Security for backend inserts
+  const supabaseAdmin = getSupabaseAdmin();
+
   // 1. Handle successful checkout completion
   if (event.type === 'checkout.session.completed') {
     const session = event.data.object as any;
     const metadata = session.metadata || {};
-
+    
+    // A. Event Registration Handler
+  if (metadata.isEventBooking === 'true') {
+      try {
+        await supabaseAdmin.from('event_registrations').insert({
+          event_id: metadata.eventId,
+          instructor_id: metadata.instructorId,
+          student_name: metadata.studentName,
+          parent_name: metadata.parentName,
+          parent_email: metadata.parentEmail,
+          amount_paid: session.amount_total ? session.amount_total / 100 : 0,
+          stripe_session_id: session.id,
+          status: 'confirmed',
+        });
+        console.log(`Event registration saved for ${metadata.studentName}`);
+      } catch (err: any) {
+        console.error('Error saving event registration:', err.message);
+      }
+      return NextResponse.json({ received: true });
+    }
+    
     const {
       instructorId,
       studentName,
@@ -53,8 +76,8 @@ export async function POST(request: Request) {
       const firstName = nameParts[0];
       const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : firstName;
 
-      // Search for an existing student under this instructor matching contact + last name
-      const { data: existingStudent } = await supabase
+      // Search for an existing student under this instructor using admin client
+      const { data: existingStudent } = await supabaseAdmin
         .from('students')
         .select('id, joining_fee_paid')
         .eq('instructor_id', instructorId)
@@ -72,8 +95,8 @@ export async function POST(request: Request) {
       if (existingStudent) {
         studentId = existingStudent.id;
 
-        // Update secondary contact info and join fee status if newly paid
-        await supabase
+        // Update secondary contact info and join fee status
+        await supabaseAdmin
           .from('students')
           .update({
             parent_name: parentName,
@@ -85,8 +108,8 @@ export async function POST(request: Request) {
           })
           .eq('id', studentId);
       } else {
-        // Create new student profile
-        const { data: newStudent, error: createError } = await supabase
+        // Create new student profile via admin client
+        const { data: newStudent, error: createError } = await supabaseAdmin
           .from('students')
           .insert({
             instructor_id: instructorId,
@@ -111,8 +134,8 @@ export async function POST(request: Request) {
 
       const subscriptionId = typeof session.subscription === 'string' ? session.subscription : null;
 
-      // Insert Enrollment Record
-      const { error: enrollmentError } = await supabase
+      // Insert Enrollment Record via admin client
+      const { error: enrollmentError } = await supabaseAdmin
         .from('enrollments')
         .insert({
           student_id: studentId,
@@ -132,7 +155,7 @@ export async function POST(request: Request) {
         console.log(`Successfully completed enrollment for student ${studentId}`);
       }
 
-      // Handle commitment weeks subscription schedule if applicable
+      // Handle commitment weeks subscription schedule
       if (subscriptionId) {
         const subscription = await stripe.subscriptions.retrieve(subscriptionId);
         const commitmentWeeks = Number(subscription.metadata?.commitmentWeeks || 0);
@@ -164,6 +187,7 @@ export async function POST(request: Request) {
       console.error('Database sync error in webhook:', err.message);
       return NextResponse.json({ error: 'Database execution failed' }, { status: 500 });
     }
+
   }
 
   // 2. Handle subscription natural completion / expiration
@@ -171,7 +195,7 @@ export async function POST(request: Request) {
     const subscription = event.data.object as any;
 
     try {
-      const { error } = await supabase
+      const { error } = await supabaseAdmin
         .from('enrollments')
         .update({
           status: 'completed',

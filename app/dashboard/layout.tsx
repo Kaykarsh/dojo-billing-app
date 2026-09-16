@@ -1,44 +1,27 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { supabase } from '@/lib/supabase';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const [loading, setLoading] = useState(true);
   const pathname = usePathname();
   const router = useRouter();
 
-  useEffect(() => {
-    async function checkUser() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.push('/login');
-      } else {
-        setLoading(false);
-      }
-    }
-    checkUser();
-  }, [router]);
-
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push('/login');
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.refresh();
+      router.push('/login');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
   };
-
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center text-xs text-gray-500">
-        Loading portal session...
-      </div>
-    );
-  }
 
   const navItems = [
     { label: 'Overview', href: '/dashboard' },
     { label: 'Pricing Tiers', href: '/dashboard/tiers' },
     { label: 'Students Roster', href: '/dashboard/students' },
+    { label: 'Events & Gradings', href: '/dashboard/events' },
   ];
 
   return (
@@ -73,7 +56,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         <button
           onClick={handleSignOut}
-          className="w-full text-left px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl transition"
+          className="w-full text-left px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
         >
           Sign Out
         </button>

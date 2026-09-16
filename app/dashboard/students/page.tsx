@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
 
 interface StudentRecord {
   id: string;
@@ -29,39 +28,17 @@ export default function StudentRosterPage() {
   const [searchTerm, setSearchTerm] = useState('');
 
   const loadStudents = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    const { data, error } = await supabase
-      .from('students')
-      .select(`
-        id,
-        student_name,
-        parent_name,
-        parent_email,
-        parent_mobile,
-        joining_fee_paid,
-        created_at,
-        enrollments (
-          id,
-          payment_cadence,
-          amount_paid,
-          status,
-          pricing_tiers (
-            name,
-            billing_interval
-          )
-        )
-      `)
-      .eq('instructor_id', user.id)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      console.error('Error fetching student roster:', error.message);
-    } else if (data) {
-      setStudents(data as unknown as StudentRecord[]);
+    try {
+      const res = await fetch('/api/students');
+      if (res.ok) {
+        const data = await res.json();
+        setStudents(data.students || []);
+      }
+    } catch (err) {
+      console.error('Failed to load students:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {

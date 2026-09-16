@@ -44,14 +44,21 @@ export default function PricingTiersPage() {
 
   const [formData, setFormData] = useState(initialFormState);
 
+  const getUserId = async () => {
+    const res = await fetch('/api/auth/me');
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.user?.id || null;
+  };
+
   const loadTiers = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getUserId();
+    if (!userId) return;
 
     const { data } = await supabase
       .from('pricing_tiers')
       .select('*')
-      .eq('instructor_id', user.id)
+      .eq('instructor_id', userId)
       .order('created_at', { ascending: true });
 
     if (data) setTiers(data);
@@ -90,11 +97,11 @@ export default function PricingTiersPage() {
 
   const handleSaveTier = async (e: React.FormEvent) => {
     e.preventDefault();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const userId = await getUserId();
+    if (!userId) return;
 
     const payload = {
-      instructor_id: user.id,
+      instructor_id: userId,
       name: formData.name,
       tier_type: formData.tier_type,
       days_per_week: Number(formData.days_per_week),
@@ -112,15 +119,13 @@ export default function PricingTiersPage() {
 
     let error;
     if (editingTierId) {
-      // Perform Update query
       const res = await supabase
         .from('pricing_tiers')
         .update(payload)
         .eq('id', editingTierId)
-        .eq('instructor_id', user.id);
+        .eq('instructor_id', userId);
       error = res.error;
     } else {
-      // Perform Insert query
       const res = await supabase.from('pricing_tiers').insert(payload);
       error = res.error;
     }
@@ -152,7 +157,6 @@ export default function PricingTiersPage() {
         </button>
       </div>
 
-      {/* Grid Display */}
       {tiers.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center space-y-3">
           <p className="text-sm font-bold text-gray-900">No pricing tiers configured</p>
@@ -224,7 +228,6 @@ export default function PricingTiersPage() {
         </div>
       )}
 
-      {/* Shared Add / Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto backdrop-blur-sm">
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl my-8 border border-gray-100">
@@ -232,8 +235,6 @@ export default function PricingTiersPage() {
               {editingTierId ? 'Edit Membership Tier' : 'Configure Membership Tier'}
             </h2>
             <form onSubmit={handleSaveTier} className="space-y-4 text-xs">
-              
-              {/* Core Information */}
               <div className="grid grid-cols-3 gap-3">
                 <div className="col-span-2">
                   <label className="block font-bold text-gray-900 mb-1">Tier Name</label>
@@ -295,7 +296,6 @@ export default function PricingTiersPage() {
                 </div>
               </div>
 
-              {/* Pricing Structures */}
               <div className="border-t border-gray-200 pt-3 space-y-3">
                 <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider block">
                   Upfront & Recurring Amounts
@@ -348,7 +348,6 @@ export default function PricingTiersPage() {
                 </div>
               </div>
 
-              {/* Marketing Callouts */}
               <div className="border-t border-gray-200 pt-3 space-y-3">
                 <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider block">
                   Promotions & Callouts
@@ -375,7 +374,6 @@ export default function PricingTiersPage() {
                 </div>
               </div>
 
-              {/* Actions */}
               <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
                 <button
                   type="button"

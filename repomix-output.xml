@@ -1,0 +1,2864 @@
+This file is a merged representation of the entire codebase, combined into a single document by Repomix.
+
+<file_summary>
+This section contains a summary of this file.
+
+<purpose>
+This file contains a packed representation of the entire repository's contents.
+It is designed to be easily consumable by AI systems for analysis, code review,
+or other automated processes.
+</purpose>
+
+<file_format>
+The content is organized as follows:
+1. This summary section
+2. Repository information
+3. Directory structure
+4. Repository files (if enabled)
+5. Multiple file entries, each consisting of:
+  - File path as an attribute
+  - Full contents of the file
+</file_format>
+
+<usage_guidelines>
+- This file should be treated as read-only. Any changes should be made to the
+  original repository files, not this packed version.
+- When processing this file, use the file path to distinguish
+  between different files in the repository.
+- Be aware that this file may contain sensitive information. Handle it with
+  the same level of security as you would the original repository.
+</usage_guidelines>
+
+<notes>
+- Some files may have been excluded based on .gitignore rules and Repomix's configuration
+- Binary files are not included in this packed representation. Please refer to the Repository Structure section for a complete list of file paths, including binary files
+- Files matching patterns in .gitignore are excluded
+- Files matching default ignore patterns are excluded
+- Files are sorted by Git change count (files with more changes are at the bottom)
+</notes>
+
+</file_summary>
+
+<directory_structure>
+app/
+  api/
+    checkout/
+      events/
+        route.ts
+      session/
+        route.ts
+      route.ts
+    webhooks/
+      stripe/
+        route.ts
+  dashboard/
+    events/
+      page.tsx
+    students/
+      page.tsx
+    tiers/
+      page.tsx
+    layout.tsx
+    page.tsx
+  events/
+    [instructor_id]/
+      page.tsx
+  login/
+    page.tsx
+  pay/
+    [instructor_id]/
+      page.tsx
+    success/
+      page.tsx
+  pricing/
+    [instructor_id]/
+      page.tsx
+  favicon.ico
+  globals.css
+  layout.tsx
+  page.tsx
+lib/
+  stripe.ts
+  supabase-server.ts
+  supabase.ts
+public/
+  file.svg
+  globe.svg
+  next.svg
+  vercel.svg
+  window.svg
+.gitignore
+eslint.config.mjs
+next.config.ts
+package.json
+postcss.config.mjs
+proxy.ts
+README.md
+tsconfig.json
+</directory_structure>
+
+<files>
+This section contains the contents of the repository's files.
+
+<file path="app/api/checkout/events/route.ts">
+import { NextResponse } from 'next/server';
+import { stripe } from '@/lib/stripe';
+
+export async function POST(request: Request) {
+  try {
+    const { instructorId, eventId, eventTitle, amount, studentName, parentName, parentEmail } = await request.json();
+
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      customer_email: parentEmail,
+      mode: 'payment',
+      line_items: [
+        {
+          price_data: {
+            currency: 'aud',
+            product_data: {
+              name: eventTitle,
+              description: `Event Entry for ${studentName}`,
+            },
+            unit_amount: Math.round(amount * 100),
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/events/${instructorId}`,
+      metadata: {
+        instructorId,
+        eventId,
+        studentName,
+        parentName,
+        parentEmail,
+        isEventBooking: 'true',
+      },
+    });
+
+    return NextResponse.json({ url: session.url });
+  } catch (err: any) {
+    console.error('Event Checkout Error:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/dashboard/events/page.tsx">
+'use client';
+
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+
+interface EventRecord {
+  id: string;
+  title: string;
+  amount: number;
+  event_date: string;
+  created_at: string;
+}
+
+export default function DashboardEventsPage() {
+  const [events, setEvents] = useState<EventRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [amount, setAmount] = useState('');
+  const [eventDate, setEventDate] = useState('');
+
+  const loadEvents = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('events')
+      .select('*')
+      .eq('instructor_id', user.id)
+      .order('event_date', { ascending: true });
+
+    if (data) setEvents(data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadEvents();
+  }, []);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { error } = await supabase.from('events').insert({
+      instructor_id: user.id,
+      title,
+      amount: Number(amount),
+      event_date: eventDate,
+    });
+
+    if (error) {
+      alert(`Error creating event: ${error.message}`);
+    } else {
+      setIsModalOpen(false);
+      setTitle('');
+      setAmount('');
+      setEventDate('');
+      loadEvents();
+    }
+  };
+
+  if (loading) return <div className="text-xs text-gray-500 font-medium">Loading events...</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Events & Gradings</h1>
+          <p className="text-xs text-gray-600 mt-0.5">Manage belt gradings and tournaments</p>
+        </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="bg-black text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-gray-800 transition shadow-sm"
+        >
+          + Create Event
+        </button>
+      </div>
+
+      {events.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center space-y-2 shadow-sm">
+          <p className="text-sm font-bold text-gray-900">No events scheduled</p>
+          <p className="text-xs text-gray-600 max-w-sm mx-auto">
+            Create an event to allow parents to register and pay online.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {events.map((evt) => (
+            <div key={evt.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-2">
+              <div className="flex justify-between items-start">
+                <h3 className="text-lg font-bold text-gray-900">{evt.title}</h3>
+                <span className="text-lg font-extrabold text-gray-900">${evt.amount}</span>
+              </div>
+              <p className="text-xs text-gray-500 font-medium">
+                📅 {new Date(evt.event_date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-gray-100">
+            <h2 className="text-xl font-bold text-gray-900">Create New Event</h2>
+            <form onSubmit={handleCreate} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-gray-900 mb-1">Title</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Autumn Belt Grading"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-black"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-900 mb-1">Fee ($)</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="65.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-black"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-gray-900 mb-1">Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={eventDate}
+                    onChange={(e) => setEventDate(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-black"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl font-bold text-gray-700 hover:bg-gray-100"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="px-4 py-2 rounded-xl font-bold bg-black text-white hover:bg-gray-800">
+                  Save Event
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="app/events/[instructor_id]/page.tsx">
+'use client';
+
+import { useEffect, useState, use } from 'react';
+import { supabase } from '@/lib/supabase';
+
+interface EventRecord {
+  id: string;
+  title: string;
+  amount: number;
+  event_date: string;
+}
+
+export default function PublicEventsPage({ params }: { params: Promise<{ instructor_id: string }> }) {
+  const resolvedParams = use(params);
+  const instructorId = resolvedParams.instructor_id;
+
+  const [events, setEvents] = useState<EventRecord[]>([]);
+  const [selectedEvent, setSelectedEvent] = useState<EventRecord | null>(null);
+  const [studentName, setStudentName] = useState('');
+  const [parentName, setParentName] = useState('');
+  const [parentEmail, setParentEmail] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    async function fetchEvents() {
+      const { data } = await supabase
+        .from('events')
+        .select('*')
+        .eq('instructor_id', instructorId)
+        .gte('event_date', new Date().toISOString().split('T')[0])
+        .order('event_date', { ascending: true });
+
+      if (data) {
+        setEvents(data);
+        if (data.length > 0) setSelectedEvent(data[0]);
+      }
+      setLoading(false);
+    }
+    fetchEvents();
+  }, [instructorId]);
+
+  const handleCheckout = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedEvent) return;
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch('/api/checkout/event', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instructorId,
+          eventId: selectedEvent.id,
+          eventTitle: selectedEvent.title,
+          amount: selectedEvent.amount,
+          studentName,
+          parentName,
+          parentEmail,
+        }),
+      });
+
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        alert('Checkout error');
+        setIsSubmitting(false);
+      }
+    } catch (err) {
+      console.error(err);
+      setIsSubmitting(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center text-xs text-gray-500">Loading dojo events...</div>;
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-10 px-4">
+      <div className="max-w-md mx-auto bg-white rounded-2xl p-6 shadow-sm border border-gray-200 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Upcoming Events & Gradings</h1>
+          <p className="text-xs text-gray-500 mt-1">Select an event to register your student</p>
+        </div>
+
+        {events.length === 0 ? (
+          <p className="text-xs text-gray-500 text-center py-4">No upcoming events scheduled.</p>
+        ) : (
+          <form onSubmit={handleCheckout} className="space-y-4 text-xs">
+            <div>
+              <label className="block font-bold text-gray-900 mb-1">Select Event</label>
+              <select
+                value={selectedEvent?.id || ''}
+                onChange={(e) => {
+                  const match = events.find((evt) => evt.id === e.target.value);
+                  if (match) setSelectedEvent(match);
+                }}
+                className="w-full border border-gray-300 rounded-xl p-3 text-xs focus:ring-2 focus:ring-black"
+              >
+                {events.map((evt) => (
+                  <option key={evt.id} value={evt.id}>
+                    {evt.title} — ${evt.amount} ({new Date(evt.event_date).toLocaleDateString('en-AU')})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-900 mb-1">Student Name</label>
+              <input
+                type="text"
+                required
+                value={studentName}
+                onChange={(e) => setStudentName(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-black"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-900 mb-1">Parent Name</label>
+              <input
+                type="text"
+                required
+                value={parentName}
+                onChange={(e) => setParentName(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-black"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-gray-900 mb-1">Parent Email</label>
+              <input
+                type="email"
+                required
+                value={parentEmail}
+                onChange={(e) => setParentEmail(e.target.value)}
+                className="w-full border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-black"
+              />
+            </div>
+
+            <div className="border-t pt-4 flex justify-between items-center text-sm font-bold">
+              <span>Total Fee:</span>
+              <span className="text-base font-extrabold text-gray-900">${selectedEvent?.amount || 0}</span>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="w-full bg-black text-white font-bold py-3.5 rounded-xl hover:bg-gray-800 transition disabled:opacity-50"
+            >
+              {isSubmitting ? 'Redirecting...' : `Pay & Register ($${selectedEvent?.amount || 0})`}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="lib/supabase-server.ts">
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+
+export async function createClient() {
+  const cookieStore = await cookies();
+
+  return createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return cookieStore.getAll();
+        },
+        setAll(cookiesToSet) {
+          try {
+            cookiesToSet.forEach(({ name, value, options }) =>
+              cookieStore.set(name, value, options)
+            );
+          } catch {
+            // The `setAll` method was called from a Server Component.
+            // This can be ignored if you have middleware refreshing user sessions.
+          }
+        },
+      },
+    }
+  );
+}
+</file>
+
+<file path="proxy.ts">
+import { createServerClient } from '@supabase/ssr';
+import { NextResponse, type NextRequest } from 'next/server';
+
+export async function proxy(request: NextRequest) {
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  });
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) =>
+            request.cookies.set(name, value)
+          );
+          response = NextResponse.next({
+            request,
+          });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
+        },
+      },
+    }
+  );
+
+  // Refresh auth token if expired
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Protect all /dashboard routes
+  if (request.nextUrl.pathname.startsWith('/dashboard')) {
+    if (!user) {
+      const url = request.nextUrl.clone();
+      url.pathname = '/login';
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // Redirect logged-in users away from /login to /dashboard
+  if (request.nextUrl.pathname === '/login' && user) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/dashboard';
+    return NextResponse.redirect(url);
+  }
+
+  return response;
+}
+
+// Config matcher tells Next.js to only run middleware on specific paths
+export const config = {
+  matcher: ['/dashboard/:path*', '/login'],
+};
+</file>
+
+<file path="app/api/checkout/session/route.ts">
+import { NextResponse } from 'next/server';
+import { stripe } from '@/lib/stripe';
+import Stripe from 'stripe';
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const sessionId = searchParams.get('session_id');
+
+  if (!sessionId) {
+    return NextResponse.json({ error: 'Missing session_id' }, { status: 400 });
+  }
+
+  try {
+    const session = await stripe.checkout.sessions.retrieve(sessionId, {
+      expand: ['line_items', 'subscription'],
+    });
+
+    const amountTotal = (session.amount_total || 0) / 100;
+    const lineItems = session.line_items?.data || [];
+    const metadata = session.metadata || {};
+
+    // Default plan name from the main recurring line item if available
+    const subscriptionLineItem = lineItems.find((item) => item.price?.recurring);
+    let planName = subscriptionLineItem?.description || 'Dojo Membership';
+    let recurringRate = 0;
+    let billingInterval = 'month';
+
+    if (session.subscription && typeof session.subscription !== 'string') {
+      const subscription = session.subscription as Stripe.Subscription;
+      const subItem = subscription.items.data[0];
+
+      if (subItem && subItem.price) {
+        recurringRate = (subItem.price.unit_amount || 0) / 100;
+        billingInterval = subItem.price.recurring?.interval || 'month';
+      }
+    }
+
+    return NextResponse.json({
+      amountPaidToday: amountTotal,
+      studentName: metadata.studentName || 'Student',
+      parentEmail: session.customer_email || metadata.parentEmail || '',
+      cadence: metadata.cadence || 'recurring',
+      planName,
+      recurringRate,
+      billingInterval,
+      lineItems: lineItems.map((item) => ({
+        description: item.description,
+        amount: (item.amount_total || 0) / 100,
+      })),
+    });
+  } catch (err: any) {
+    console.error('Error fetching Stripe session:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/api/checkout/route.ts">
+import { NextResponse } from 'next/server';
+import { stripe } from '@/lib/stripe';
+
+export async function POST(request: Request) {
+  try {
+    const body = await request.json();
+    const {
+      instructorId,
+      studentName,
+      parentName,
+      parentMobile,
+      parentEmail,
+      cadence,
+      selectedTier,
+      paymentRail,
+      recurringRate,
+      billingInterval,
+      joiningFee,
+      initialDeposit,
+      calculatedTermFee,
+      hasUpfrontFees,
+    } = body;
+
+    const isSubscription = cadence === 'recurring';
+    const interval = billingInterval === 'week' ? 'week' : 'month';
+
+    const paymentMethodTypes: ('card' | 'au_becs_debit')[] =
+      paymentRail === 'payto' ? ['au_becs_debit'] : ['card'];
+
+    const lineItems: any[] = [];
+
+    // 1. One-Time Upfront Joining Fee
+    if (joiningFee && joiningFee > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'aud',
+          product_data: {
+            name: 'Dojo Joining Fee',
+            description: 'One-time signup fee',
+          },
+          unit_amount: Math.round(joiningFee * 100),
+        },
+        quantity: 1,
+      });
+    }
+
+    // 2. One-Time Initial Deposit
+    if (isSubscription && initialDeposit && initialDeposit > 0) {
+      lineItems.push({
+        price_data: {
+          currency: 'aud',
+          product_data: {
+            name: 'Initial Membership Deposit',
+            description: 'Instalment plan setup deposit',
+          },
+          unit_amount: Math.round(initialDeposit * 100),
+        },
+        quantity: 1,
+      });
+    }
+
+    // 3. Base Membership Pricing (Recurring vs Term Upfront)
+    if (isSubscription) {
+      lineItems.push({
+        price_data: {
+          currency: 'aud',
+          product_data: {
+            name: `Dojo Enrollment - ${studentName}`,
+            description: `${interval === 'week' ? 'Weekly' : 'Monthly'} Membership Fee`,
+          },
+          unit_amount: Math.round(recurringRate * 100),
+          recurring: {
+            interval: interval,
+          },
+        },
+        quantity: 1,
+      });
+    } else {
+      lineItems.push({
+        price_data: {
+          currency: 'aud',
+          product_data: {
+            name: `Dojo Term Enrollment - ${studentName}`,
+            description: 'Upfront Term Payment (Pro-Rata)',
+          },
+          unit_amount: Math.round(calculatedTermFee * 100),
+        },
+        quantity: 1,
+      });
+    }
+
+    const sessionConfig: any = {
+      payment_method_types: paymentMethodTypes,
+      customer_email: parentEmail,
+      customer_creation: isSubscription ? undefined : 'always',
+      line_items: lineItems,
+      mode: isSubscription ? 'subscription' : 'payment',
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/pay/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pay/${instructorId}?tier_id=${selectedTier}`,
+      metadata: {
+        instructorId,
+        studentName,
+        parentName,
+        parentMobile,
+        parentEmail,
+        cadence,
+        selectedTier,
+        paymentRail,
+        joiningFee: joiningFee || 0,
+        initialDeposit: initialDeposit || 0,
+      },
+    };
+
+    if (isSubscription) {
+      const trialEndDate = new Date();
+      if (hasUpfrontFees) {
+        if (interval === 'week') {
+          trialEndDate.setDate(trialEndDate.getDate() + 7);
+        } else {
+          trialEndDate.setMonth(trialEndDate.getMonth() + 1);
+        }
+      }
+
+      sessionConfig.subscription_data = {
+        description: `Dojo Subscription (${interval})`,
+        ...(hasUpfrontFees && {
+          trial_end: Math.floor(trialEndDate.getTime() / 1000),
+        }),
+        metadata: {
+          instructorId,
+          selectedTier,
+        },
+      };
+    }
+
+    const session = await stripe.checkout.sessions.create(sessionConfig);
+    return NextResponse.json({ url: session.url });
+  } catch (err: any) {
+    console.error('Stripe Session Error:', err);
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/dashboard/students/page.tsx">
+'use client';
+
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+
+interface StudentRecord {
+  id: string;
+  student_name: string;
+  parent_name: string;
+  parent_email: string;
+  parent_mobile: string;
+  joining_fee_paid: boolean;
+  created_at: string;
+  enrollments: {
+    id: string;
+    payment_cadence: string;
+    amount_paid: number;
+    status: string;
+    pricing_tiers: {
+      name: string;
+      billing_interval: string;
+    } | null;
+  }[];
+}
+
+export default function StudentRosterPage() {
+  const [students, setStudents] = useState<StudentRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  const loadStudents = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from('students')
+      .select(`
+        id,
+        student_name,
+        parent_name,
+        parent_email,
+        parent_mobile,
+        joining_fee_paid,
+        created_at,
+        enrollments (
+          id,
+          payment_cadence,
+          amount_paid,
+          status,
+          pricing_tiers (
+            name,
+            billing_interval
+          )
+        )
+      `)
+      .eq('instructor_id', user.id)
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching student roster:', error.message);
+    } else if (data) {
+      setStudents(data as unknown as StudentRecord[]);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadStudents();
+  }, []);
+
+  const filteredStudents = students.filter(
+    (s) =>
+      s.student_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.parent_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.parent_email.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (loading) {
+    return <div className="text-xs text-gray-500 font-medium">Loading student roster...</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Student Roster</h1>
+          <p className="text-xs text-gray-600 mt-0.5">
+            View active enrollments, parent contact info, and payment statuses
+          </p>
+        </div>
+
+        <div className="w-full sm:w-64">
+          <input
+            type="text"
+            placeholder="Search student or parent..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-black shadow-sm"
+          />
+        </div>
+      </div>
+
+      {filteredStudents.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center space-y-2 shadow-sm">
+          <p className="text-sm font-bold text-gray-900">No students found</p>
+          <p className="text-xs text-gray-600 max-w-sm mx-auto">
+            {searchTerm
+              ? 'No records match your search query.'
+              : 'Enrolled students will automatically appear here once parents complete checkout.'}
+          </p>
+        </div>
+      ) : (
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-gray-50 border-b border-gray-200 text-gray-500 uppercase tracking-wider font-bold text-[10px]">
+                <tr>
+                  <th className="px-5 py-3.5">Student</th>
+                  <th className="px-5 py-3.5">Parent / Guardian</th>
+                  <th className="px-5 py-3.5">Enrolled Plan</th>
+                  <th className="px-5 py-3.5">Cadence</th>
+                  <th className="px-5 py-3.5">Status</th>
+                  <th className="px-5 py-3.5">Enrolled Date</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 text-gray-800">
+                {filteredStudents.map((student) => {
+                  const activeEnrollment = student.enrollments?.[0];
+                  const tierName = activeEnrollment?.pricing_tiers?.name || 'Standard Plan';
+                  const cadence = activeEnrollment?.payment_cadence || 'recurring';
+                  const status = activeEnrollment?.status || 'active';
+
+                  return (
+                    <tr key={student.id} className="hover:bg-gray-50/50 transition">
+                      <td className="px-5 py-4 font-bold text-gray-900">{student.student_name}</td>
+                      <td className="px-5 py-4">
+                        <div className="font-semibold text-gray-900">{student.parent_name}</div>
+                        <div className="text-[11px] text-gray-500">{student.parent_email}</div>
+                        <div className="text-[11px] text-gray-400">{student.parent_mobile}</div>
+                      </td>
+                      <td className="px-5 py-4 font-semibold text-gray-900">{tierName}</td>
+                      <td className="px-5 py-4">
+                        <span className="capitalize font-medium text-gray-700">
+                          {cadence === 'term_upfront' ? 'Term Upfront' : 'Instalments'}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span
+                          className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                            status === 'active'
+                              ? 'bg-green-100 text-green-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-gray-500 font-medium">
+                        {new Date(student.created_at).toLocaleDateString('en-AU', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="app/dashboard/tiers/page.tsx">
+'use client';
+
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+
+interface PricingTier {
+  id: string;
+  name: string;
+  tier_type: string;
+  days_per_week: number;
+  weekly_price: number;
+  term_price: number;
+  upfront_fee: number;
+  recurring_price: number;
+  billing_interval: string;
+  initial_deposit: number;
+  joining_fee: number;
+  commitment_weeks: number;
+  savings_text: string;
+  is_popular: boolean;
+}
+
+export default function PricingTiersPage() {
+  const [tiers, setTiers] = useState<PricingTier[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTierId, setEditingTierId] = useState<string | null>(null);
+
+  const initialFormState = {
+    name: '',
+    tier_type: 'Standard',
+    days_per_week: '2',
+    weekly_price: '',
+    term_price: '',
+    upfront_fee: '',
+    recurring_price: '',
+    billing_interval: 'month',
+    initial_deposit: '',
+    joining_fee: '0',
+    commitment_weeks: '22',
+    savings_text: '',
+    is_popular: false,
+  };
+
+  const [formData, setFormData] = useState(initialFormState);
+
+  const loadTiers = async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('pricing_tiers')
+      .select('*')
+      .eq('instructor_id', user.id)
+      .order('created_at', { ascending: true });
+
+    if (data) setTiers(data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadTiers();
+  }, []);
+
+  const handleOpenAddModal = () => {
+    setEditingTierId(null);
+    setFormData(initialFormState);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (tier: PricingTier) => {
+    setEditingTierId(tier.id);
+    setFormData({
+      name: tier.name || '',
+      tier_type: tier.tier_type || 'Standard',
+      days_per_week: String(tier.days_per_week ?? '2'),
+      weekly_price: String(tier.weekly_price ?? ''),
+      term_price: String(tier.term_price ?? ''),
+      upfront_fee: String(tier.upfront_fee ?? ''),
+      recurring_price: String(tier.recurring_price ?? ''),
+      billing_interval: tier.billing_interval || 'month',
+      initial_deposit: String(tier.initial_deposit ?? ''),
+      joining_fee: String(tier.joining_fee ?? '0'),
+      commitment_weeks: String(tier.commitment_weeks ?? '22'),
+      savings_text: tier.savings_text || '',
+      is_popular: Boolean(tier.is_popular),
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSaveTier = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const payload = {
+      instructor_id: user.id,
+      name: formData.name,
+      tier_type: formData.tier_type,
+      days_per_week: Number(formData.days_per_week),
+      weekly_price: Number(formData.weekly_price || 0),
+      term_price: Number(formData.term_price || 0),
+      upfront_fee: Number(formData.upfront_fee || formData.term_price || 0),
+      recurring_price: Number(formData.recurring_price || formData.weekly_price || 0),
+      billing_interval: formData.billing_interval,
+      initial_deposit: Number(formData.initial_deposit || 0),
+      joining_fee: Number(formData.joining_fee || 0),
+      commitment_weeks: Number(formData.commitment_weeks || 0),
+      savings_text: formData.savings_text,
+      is_popular: formData.is_popular,
+    };
+
+    let error;
+    if (editingTierId) {
+      // Perform Update query
+      const res = await supabase
+        .from('pricing_tiers')
+        .update(payload)
+        .eq('id', editingTierId)
+        .eq('instructor_id', user.id);
+      error = res.error;
+    } else {
+      // Perform Insert query
+      const res = await supabase.from('pricing_tiers').insert(payload);
+      error = res.error;
+    }
+
+    if (error) {
+      alert(`Error saving tier: ${error.message}`);
+    } else {
+      setIsModalOpen(false);
+      setEditingTierId(null);
+      setFormData(initialFormState);
+      loadTiers();
+    }
+  };
+
+  if (loading) return <div className="text-xs text-gray-500 font-medium">Loading pricing tiers...</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Pricing Tiers</h1>
+          <p className="text-xs text-gray-600 mt-0.5">Configure term structures, direct debit options, and savings text</p>
+        </div>
+        <button
+          onClick={handleOpenAddModal}
+          className="bg-black text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-gray-800 transition shadow-sm"
+        >
+          + Add New Tier
+        </button>
+      </div>
+
+      {/* Grid Display */}
+      {tiers.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center space-y-3">
+          <p className="text-sm font-bold text-gray-900">No pricing tiers configured</p>
+          <p className="text-xs text-gray-600 max-w-sm mx-auto">
+            Click above to add flexible membership packages for upfront term payments or direct debit schedules.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {tiers.map((tier) => (
+            <div key={tier.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-3">
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-gray-900">{tier.name}</h3>
+                    <span className="text-[10px] bg-gray-100 text-gray-800 px-2 py-0.5 rounded-md font-semibold">
+                      {tier.tier_type}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-600 font-medium">{tier.days_per_week} Day(s) per week</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {tier.is_popular && (
+                    <span className="bg-black text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                      Popular
+                    </span>
+                  )}
+                  <button
+                    onClick={() => handleOpenEditModal(tier)}
+                    className="text-xs font-bold text-gray-700 hover:text-black hover:bg-gray-100 px-2.5 py-1 rounded-lg border border-gray-200 transition"
+                  >
+                    Edit
+                  </button>
+                </div>
+              </div>
+
+              {tier.savings_text && (
+                <div className="bg-red-50 text-red-700 text-[11px] font-bold px-2.5 py-1 rounded-lg border border-red-200 inline-block">
+                  {tier.savings_text}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-3 text-xs border-t border-b border-gray-100 py-3">
+                <div>
+                  <span className="text-gray-500 block text-[10px] font-bold uppercase tracking-wider">Upfront / Term</span>
+                  <span className="font-extrabold text-gray-900">${tier.upfront_fee || tier.term_price}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block text-[10px] font-bold uppercase tracking-wider">Recurring Payment</span>
+                  <span className="font-extrabold text-gray-900">
+                    ${tier.recurring_price || tier.weekly_price} / {tier.billing_interval}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block text-[10px] font-bold uppercase tracking-wider">Initial Deposit</span>
+                  <span className="font-semibold text-gray-800">${tier.initial_deposit}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500 block text-[10px] font-bold uppercase tracking-wider">Joining Fee</span>
+                  <span className="font-semibold text-gray-800">${tier.joining_fee}</span>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-gray-700 font-semibold">
+                Commitment: {tier.commitment_weeks} Weeks
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Shared Add / Edit Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 overflow-y-auto backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl my-8 border border-gray-100">
+            <h2 className="text-xl font-bold text-gray-900">
+              {editingTierId ? 'Edit Membership Tier' : 'Configure Membership Tier'}
+            </h2>
+            <form onSubmit={handleSaveTier} className="space-y-4 text-xs">
+              
+              {/* Core Information */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="block font-bold text-gray-900 mb-1">Tier Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Standard 2-Day (12 Months)"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-gray-900 mb-1">Tier Type</label>
+                  <select
+                    value={formData.tier_type}
+                    onChange={(e) => setFormData({ ...formData, tier_type: e.target.value })}
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+                  >
+                    <option value="Standard">Standard</option>
+                    <option value="Non-Standard">Non-Standard</option>
+                    <option value="TFN">TFN (Month to Month)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-900 mb-1">Days / Week</label>
+                  <input
+                    type="number"
+                    required
+                    value={formData.days_per_week}
+                    onChange={(e) => setFormData({ ...formData, days_per_week: e.target.value })}
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-gray-900 mb-1">Commitment (Wks)</label>
+                  <input
+                    type="number"
+                    required
+                    value={formData.commitment_weeks}
+                    onChange={(e) => setFormData({ ...formData, commitment_weeks: e.target.value })}
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-gray-900 mb-1">Billing Interval</label>
+                  <select
+                    value={formData.billing_interval}
+                    onChange={(e) => setFormData({ ...formData, billing_interval: e.target.value })}
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+                  >
+                    <option value="week">Weekly</option>
+                    <option value="month">Monthly</option>
+                    <option value="year">Yearly</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Pricing Structures */}
+              <div className="border-t border-gray-200 pt-3 space-y-3">
+                <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider block">
+                  Upfront & Recurring Amounts
+                </span>
+                
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-gray-900 mb-1">Term Price / Upfront ($)</label>
+                    <input
+                      type="number"
+                      placeholder="1320.00"
+                      value={formData.term_price}
+                      onChange={(e) => setFormData({ ...formData, term_price: e.target.value, upfront_fee: e.target.value })}
+                      className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-gray-900 mb-1">Recurring Repayment ($)</label>
+                    <input
+                      type="number"
+                      placeholder="90.00"
+                      value={formData.recurring_price}
+                      onChange={(e) => setFormData({ ...formData, recurring_price: e.target.value, weekly_price: e.target.value })}
+                      className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-bold text-gray-900 mb-1">Initial Deposit ($)</label>
+                    <input
+                      type="number"
+                      placeholder="330.00"
+                      value={formData.initial_deposit}
+                      onChange={(e) => setFormData({ ...formData, initial_deposit: e.target.value })}
+                      className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-gray-900 mb-1">Joining Fee ($)</label>
+                    <input
+                      type="number"
+                      placeholder="100.00"
+                      value={formData.joining_fee}
+                      onChange={(e) => setFormData({ ...formData, joining_fee: e.target.value })}
+                      className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Marketing Callouts */}
+              <div className="border-t border-gray-200 pt-3 space-y-3">
+                <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider block">
+                  Promotions & Callouts
+                </span>
+                <div>
+                  <label className="block font-bold text-gray-900 mb-1">Savings Text / Badge</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Save $840 + NO JOINING FEE"
+                    value={formData.savings_text}
+                    onChange={(e) => setFormData({ ...formData, savings_text: e.target.value })}
+                    className="w-full bg-white text-gray-900 border border-gray-300 rounded-xl px-3 py-2 text-xs font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-black focus:border-black"
+                  />
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <input
+                    type="checkbox"
+                    id="is_popular"
+                    checked={formData.is_popular}
+                    onChange={(e) => setFormData({ ...formData, is_popular: e.target.checked })}
+                    className="h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
+                  />
+                  <label htmlFor="is_popular" className="font-bold text-gray-900 text-xs">Highlight as Featured Option</label>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-2 pt-4 border-t border-gray-200">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl font-bold text-gray-700 hover:bg-gray-100 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl font-bold bg-black text-white hover:bg-gray-800 transition shadow-sm"
+                >
+                  {editingTierId ? 'Update Tier' : 'Save Tier'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="app/dashboard/layout.tsx">
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const [loading, setLoading] = useState(true);
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    async function checkUser() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        router.push('/login');
+      } else {
+        setLoading(false);
+      }
+    }
+    checkUser();
+  }, [router]);
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.push('/login');
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center text-xs text-gray-500">
+        Loading portal session...
+      </div>
+    );
+  }
+
+  const navItems = [
+    { label: 'Overview', href: '/dashboard' },
+    { label: 'Pricing Tiers', href: '/dashboard/tiers' },
+    { label: 'Students Roster', href: '/dashboard/students' },
+    { label: 'Events & Gradings', href: '/dashboard/events' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Sidebar Navigation */}
+      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col justify-between p-6">
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Instructor Portal</h2>
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">Dojo Management</p>
+          </div>
+
+          <nav className="space-y-1">
+            {navItems.map((item) => {
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`block px-3 py-2 rounded-xl text-xs font-semibold transition ${
+                    active
+                      ? 'bg-black text-white'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
+        <button
+          onClick={handleSignOut}
+          className="w-full text-left px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl transition"
+        >
+          Sign Out
+        </button>
+      </aside>
+
+      {/* Main Content View */}
+      <main className="flex-1 p-8 overflow-y-auto">
+        <div className="max-w-5xl mx-auto">{children}</div>
+      </main>
+    </div>
+  );
+}
+</file>
+
+<file path="app/dashboard/page.tsx">
+'use client';
+
+import { useEffect, useState } from 'react';
+import { supabase } from '@/lib/supabase';
+
+interface OverviewStats {
+  activeStudentsCount: number;
+  pastDueCount: number;
+  monthlyRevenue: number;
+  businessName: string;
+}
+
+export default function DashboardPage() {
+  const [stats, setStats] = useState<OverviewStats>({
+    activeStudentsCount: 0,
+    pastDueCount: 0,
+    monthlyRevenue: 0,
+    businessName: '',
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadDashboardData() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+
+        // Fetch instructor details
+        const { data: instructor } = await supabase
+          .from('instructors')
+          .select('business_name')
+          .eq('id', user.id)
+          .single();
+
+        // Fetch active enrollments
+        const { data: enrollments } = await supabase
+          .from('enrollments')
+          .select('amount_paid, payment_cadence, status')
+          .eq('instructor_id', user.id);
+
+        let activeCount = 0;
+        let pastDueCount = 0;
+        let estimatedMonthly = 0;
+
+        enrollments?.forEach((item) => {
+          if (item.status === 'active') {
+            activeCount += 1;
+            if (item.payment_cadence === 'weekly') {
+              estimatedMonthly += Number(item.amount_paid || 0) * 4.33;
+            } else {
+              estimatedMonthly += Number(item.amount_paid || 0) / 3; // Approx 3-month term
+            }
+          } else if (item.status === 'past_due') {
+            pastDueCount += 1;
+          }
+        });
+
+        setStats({
+          activeStudentsCount: activeCount,
+          pastDueCount,
+          monthlyRevenue: Math.round(estimatedMonthly),
+          businessName: instructor?.business_name || 'My Dojo',
+        });
+      } catch (err) {
+        console.error('Error loading dashboard stats:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadDashboardData();
+  }, []);
+
+  if (loading) {
+    return <div className="text-xs text-gray-400">Loading metrics...</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900">{stats.businessName}</h1>
+        <p className="text-xs text-gray-500 mt-0.5">Performance & Roster Overview</p>
+      </div>
+
+      {/* Metric Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-1">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+            Active Enrollments
+          </span>
+          <p className="text-3xl font-extrabold text-gray-900">{stats.activeStudentsCount}</p>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-1">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+            Est. Monthly Revenue
+          </span>
+          <p className="text-3xl font-extrabold text-gray-900">${stats.monthlyRevenue}</p>
+        </div>
+
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-1">
+          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+            Past Due Payments
+          </span>
+          <p className={`text-3xl font-extrabold ${stats.pastDueCount > 0 ? 'text-red-600' : 'text-gray-900'}`}>
+            {stats.pastDueCount}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/login/page.tsx">
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const router = useRouter();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg(null);
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        setErrorMsg(error.message);
+        setLoading(false);
+      } else if (data.session) {
+        // Refresh server component cache & transition to dashboard
+        router.refresh();
+        router.push('/dashboard');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'An unexpected error occurred');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-gray-200 p-8 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Instructor Portal</h1>
+          <p className="text-xs text-gray-500 mt-1">Sign in to manage your dojo</p>
+        </div>
+
+        {errorMsg && (
+          <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs font-medium border border-red-100">
+            {errorMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+              Email Address
+            </label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black text-gray-900"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+              Password
+            </label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black text-gray-900"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-black text-white font-semibold py-2.5 rounded-xl hover:bg-gray-800 transition text-sm disabled:opacity-50 cursor-pointer"
+          >
+            {loading ? 'Authenticating...' : 'Sign In'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/pay/[instructor_id]/page.tsx">
+'use client';
+
+import { useState, useEffect, use } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { supabase } from '@/lib/supabase';
+
+interface Tier {
+  id: string;
+  name: string;
+  tier_type: string;
+  commitment_weeks: number;
+  days_per_week: number;
+  upfront_fee: number;
+  joining_fee: number;
+  initial_deposit?: number;
+  recurring_price: number;
+  billing_interval: string; // 'week' | 'month' | 'year'
+  weekly_price: number;
+  term_price: number;
+  is_popular: boolean;
+  savings_text: string;
+}
+
+interface Instructor {
+  id: string;
+  business_name: string;
+  term_start_date: string;
+  term_end_date: string;
+}
+
+export default function CheckoutPage({ params }: { params: Promise<{ instructor_id: string }> }) {
+  const resolvedParams = use(params);
+  const instructorId = resolvedParams.instructor_id;
+  const searchParams = useSearchParams();
+  const tierIdFromUrl = searchParams.get('tier_id');
+
+  const [instructor, setInstructor] = useState<Instructor | null>(null);
+  const [tiers, setTiers] = useState<Tier[]>([]);
+  const [selectedTierObj, setSelectedTierObj] = useState<Tier | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  // Form State
+  const [studentName, setStudentName] = useState('');
+  const [parentName, setParentName] = useState('');
+  const [parentMobile, setParentMobile] = useState('');
+  const [parentEmail, setParentEmail] = useState('');
+  const [cadence, setCadence] = useState<'recurring' | 'term_upfront'>('recurring');
+  const [paymentRail, setPaymentRail] = useState<'card' | 'payto'>('card');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    async function fetchData() {
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+      if (!uuidRegex.test(instructorId)) {
+        setNotFound(true);
+        setLoading(false);
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        const { data: instructorData, error: instError } = await supabase
+          .from('instructors')
+          .select('*')
+          .eq('id', instructorId)
+          .maybeSingle();
+
+        if (instError || !instructorData) {
+          setNotFound(true);
+          return;
+        }
+
+        setInstructor(instructorData);
+
+        const { data: tierData, error: tierError } = await supabase
+          .from('pricing_tiers')
+          .select('*')
+          .eq('instructor_id', instructorId)
+          .order('term_price', { ascending: true });
+
+        if (tierError || !tierData || tierData.length === 0) {
+          setNotFound(true);
+          return;
+        }
+
+        setTiers(tierData);
+        const matchedTier = tierData.find((t) => t.id === tierIdFromUrl);
+        const activeTier = matchedTier || tierData[0];
+
+        setSelectedTierObj(activeTier);
+        if (activeTier.tier_type === 'TFN') {
+          setCadence('recurring');
+        }
+      } catch (err) {
+            console.error('Unexpected error in checkout page:', err);
+            setNotFound(true);
+     } finally {
+        setLoading(false);
+    }
+    }
+
+    fetchData();
+  }, [instructorId, tierIdFromUrl]);
+
+  const calculateProRata = () => {
+    if (!instructor || !selectedTierObj) {
+      return { remainingWeeks: 10, totalWeeks: 10, calculatedTermFee: 0 };
+    }
+
+    const start = new Date(instructor.term_start_date);
+    const end = new Date(instructor.term_end_date);
+    const today = new Date();
+
+    const totalTime = end.getTime() - start.getTime();
+    const remainingTime = end.getTime() - today.getTime();
+
+    const rawTotalWeeks = Math.max(1, Math.ceil(totalTime / (1000 * 60 * 60 * 24 * 7)));
+    const rawRemainingWeeks = Math.max(0, Math.ceil(remainingTime / (1000 * 60 * 60 * 24 * 7)));
+
+    const totalWeeks = rawTotalWeeks;
+    const remainingWeeks = Math.min(rawRemainingWeeks, totalWeeks);
+
+    const fullTermPrice = selectedTierObj.term_price > 0 
+      ? selectedTierObj.term_price 
+      : selectedTierObj.upfront_fee;
+      
+    const calculatedTermFee = Math.round((remainingWeeks / totalWeeks) * fullTermPrice);
+
+    return { remainingWeeks, totalWeeks, calculatedTermFee };
+  };
+
+  const { remainingWeeks, totalWeeks, calculatedTermFee } = calculateProRata();
+
+  const joiningFee = selectedTierObj ? Number(selectedTierObj.joining_fee || 0) : 0;
+  const initialDeposit = (selectedTierObj && cadence === 'recurring') 
+    ? Number(selectedTierObj.initial_deposit || selectedTierObj.upfront_fee || 0) 
+    : 0;
+
+  // Upfront fee due today (Joining fee + initial deposit)
+  const totalUpfrontFees = joiningFee + initialDeposit;
+
+  // Amount paid upfront today vs recurring later
+  const totalDueToday = cadence === 'term_upfront'
+    ? calculatedTermFee + joiningFee
+    : (totalUpfrontFees > 0 ? totalUpfrontFees : Number(selectedTierObj?.recurring_price || selectedTierObj?.weekly_price || 0));
+
+  const recurringRate = selectedTierObj ? Number(selectedTierObj.recurring_price || selectedTierObj.weekly_price || 0) : 0;
+  const billingInterval = selectedTierObj?.billing_interval || 'month';
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          instructorId,
+          studentName,
+          parentName,
+          parentMobile,
+          parentEmail,
+          cadence,
+          selectedTier: selectedTierObj?.id,
+          paymentRail,
+          recurringRate,
+          billingInterval,
+          joiningFee,
+          initialDeposit,
+          calculatedTermFee,
+          hasUpfrontFees: totalUpfrontFees > 0,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Server Error:', errorText);
+        alert('Payment setup error. Please check server logs.');
+        setIsSubmitting(false);
+        return;
+      }
+
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      }
+    } catch (err) {
+      console.error('Checkout error:', err);
+      alert('An unexpected error occurred.');
+      setIsSubmitting(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center text-gray-500">Loading checkout...</div>;
+  if (notFound) return <div className="p-8 text-center text-red-500 font-medium">Dojo or plan not found.</div>;
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">{instructor?.business_name}</h1>
+          <p className="text-xs text-gray-500 mt-1">Student Enrollment & Billing Setup</p>
+        </div>
+
+        <div>
+          <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-2">
+            Selected Plan
+          </label>
+          <select
+            value={selectedTierObj?.id || ''}
+            onChange={(e) => {
+              const matched = tiers.find((t) => t.id === e.target.value);
+              if (matched) setSelectedTierObj(matched);
+            }}
+            className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-black focus:outline-none"
+          >
+            {tiers.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name} — ${t.recurring_price || t.weekly_price}/{t.billing_interval || 'month'} ({t.days_per_week} day/wk)
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setCadence('recurring')}
+            className={`py-3 text-xs font-bold rounded-xl border transition ${
+              cadence === 'recurring' ? 'bg-black text-white border-black' : 'bg-white text-gray-700 border-gray-200'
+            }`}
+          >
+            {billingInterval === 'week' ? 'Weekly' : 'Monthly'} Instalments
+          </button>
+          <button
+            type="button"
+            onClick={() => setCadence('term_upfront')}
+            className={`py-3 text-xs font-bold rounded-xl border transition ${
+              cadence === 'term_upfront' ? 'bg-black text-white border-black' : 'bg-white text-gray-700 border-gray-200'
+            }`}
+          >
+            Term Upfront (Pro-Rata)
+          </button>
+        </div>
+
+        {cadence === 'term_upfront' && (
+          <div className="bg-green-50 border border-green-200 text-green-800 text-xs p-3 rounded-xl">
+            Pro-rata calculation: {remainingWeeks} weeks remaining out of {totalWeeks} weeks in Term.
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-700">Student Name</label>
+            <input
+              type="text"
+              required
+              value={studentName}
+              onChange={(e) => setStudentName(e.target.value)}
+              className="mt-1 w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-black focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700">Parent / Guardian Name</label>
+            <input
+              type="text"
+              required
+              value={parentName}
+              onChange={(e) => setParentName(e.target.value)}
+              className="mt-1 w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-black focus:outline-none"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700">Parent Email</label>
+              <input
+                type="email"
+                required
+                value={parentEmail}
+                onChange={(e) => setParentEmail(e.target.value)}
+                className="mt-1 w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-black focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700">Parent Mobile</label>
+              <input
+                type="tel"
+                required
+                value={parentMobile}
+                onChange={(e) => setParentMobile(e.target.value)}
+                className="mt-1 w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-black focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Pricing Breakdown */}
+          <div className="border-t border-gray-200 pt-4 space-y-2">
+            {joiningFee > 0 && (
+              <div className="flex justify-between text-xs text-amber-800 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                <span>Joining Fee:</span>
+                <span className="font-semibold">+${joiningFee}.00</span>
+              </div>
+            )}
+
+            {initialDeposit > 0 && cadence === 'recurring' && (
+              <div className="flex justify-between text-xs text-blue-800 bg-blue-50 p-2 rounded-lg border border-blue-200">
+                <span>Initial Deposit / Upfront:</span>
+                <span className="font-semibold">+${initialDeposit}.00</span>
+              </div>
+            )}
+
+            {cadence === 'recurring' && (
+              <div className="flex justify-between text-xs text-gray-600">
+                <span>Ongoing Instalment Rate:</span>
+                <span className="font-semibold">${recurringRate} / {billingInterval}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between items-center text-lg font-bold text-gray-900 pt-2 border-t">
+              <span>Total Due Today:</span>
+              <span>${totalDueToday}</span>
+            </div>
+            
+            {cadence === 'recurring' && totalUpfrontFees > 0 && (
+              <p className="text-[11px] text-gray-500 italic text-right">
+                First recurring ${recurringRate} payment starts in 1 {billingInterval}.
+              </p>
+            )}
+          </div>
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full bg-black text-white font-bold py-3.5 rounded-xl hover:bg-gray-800 transition disabled:opacity-50"
+          >
+            {isSubmitting ? 'Processing...' : `Proceed to Payment Setup ($${totalDueToday})`}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/pay/success/page.tsx">
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
+
+interface SessionDetails {
+  amountPaidToday?: number;
+  amountTotal?: number;
+  studentName: string;
+  parentEmail: string;
+  cadence: string;
+  planName: string;
+  recurringRate: number;
+  billingInterval: string;
+  lineItems: Array<{ description: string; amount: number }>;
+}
+
+export default function EnrollmentSuccessPage() {
+  const searchParams = useSearchParams();
+  const sessionId = searchParams.get('session_id');
+
+  const [details, setDetails] = useState<SessionDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!sessionId) {
+      setLoading(false);
+      return;
+    }
+
+    async function fetchDetails() {
+      try {
+        const res = await fetch(`/api/checkout/session?session_id=${sessionId}`);
+        if (res.ok) {
+          const data = await res.json();
+          setDetails(data);
+        }
+      } catch (err) {
+        console.error('Failed to load receipt details:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchDetails();
+  }, [sessionId]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="text-xs font-semibold text-gray-500">Loading receipt details...</div>
+      </div>
+    );
+  }
+
+  const paidAmount = details?.amountPaidToday ?? details?.amountTotal ?? 0;
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-3xl p-8 shadow-sm border border-gray-100 space-y-6 text-center">
+        
+        {/* Success Checkmark */}
+        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
+          ✓
+        </div>
+
+        <div>
+          <h1 className="text-2xl font-extrabold text-gray-900">Enrollment Successful!</h1>
+          <p className="text-xs text-gray-500 mt-1">
+            Your payment and student registration have been confirmed.
+          </p>
+        </div>
+
+        {details && (
+          <div className="bg-gray-50 border border-gray-200 rounded-2xl p-5 text-left space-y-4">
+            
+            {/* Student & Plan Summary */}
+            <div className="border-b border-gray-200 pb-3">
+              <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">
+                Student Enrolled
+              </span>
+              <p className="text-sm font-bold text-gray-900 mt-0.5">{details.studentName}</p>
+              <p className="text-xs text-gray-500">{details.parentEmail}</p>
+            </div>
+
+            {/* Line Item Breakdown */}
+            <div className="space-y-2 text-xs">
+              <span className="text-[10px] font-extrabold text-gray-400 uppercase tracking-wider block">
+                Payment Breakdown
+              </span>
+              
+              {details.lineItems?.map((item, idx) => (
+                <div key={idx} className="flex justify-between text-gray-700 font-medium">
+                  <span>{item.description}</span>
+                  <span className="font-bold text-gray-900">${(item.amount ?? 0).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Total Paid Today */}
+            <div className="border-t border-gray-200 pt-3 flex justify-between items-center text-sm font-bold text-gray-900">
+              <span>Amount Paid Today:</span>
+              <span className="text-base font-extrabold text-green-700">
+                ${paidAmount.toFixed(2)} AUD
+              </span>
+            </div>
+
+            {/* Future Recurring Schedule Callout */}
+            {details.cadence === 'recurring' && (details.recurringRate ?? 0) > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-900 space-y-0.5">
+                <span className="font-bold block">Ongoing Membership Schedule</span>
+                <p className="text-[11px] text-blue-800">
+                  Subsequent payments of <span className="font-bold">${(details.recurringRate ?? 0).toFixed(2)} / {details.billingInterval || 'month'}</span> will automatically commence next {details.billingInterval || 'month'}.
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Reference Code */}
+        {sessionId && (
+          <div className="bg-gray-100 rounded-xl p-3 text-[11px] font-mono text-gray-500 break-all">
+            Ref: {sessionId}
+          </div>
+        )}
+
+        <Link
+          href="/"
+          className="block w-full bg-black text-white font-bold py-3.5 rounded-2xl hover:bg-gray-800 transition text-xs"
+        >
+          Return to Home
+        </Link>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/pricing/[instructor_id]/page.tsx">
+import Link from 'next/link';
+import { supabase } from '@/lib/supabase';
+
+interface PricingTier {
+  id: string;
+  name: string;
+  tier_type: string;
+  commitment_weeks: number;
+  days_per_week: number;
+  upfront_fee: number;
+  recurring_price: number;
+  billing_interval: string;
+  weekly_price: number;
+  term_price: number;
+  joining_fee: number;
+  is_popular: boolean;
+  savings_text: string;
+}
+
+export default async function PricingPage({ params }: { params: Promise<{ instructor_id: string }> }) {
+  const { instructor_id } = await params;
+
+  // 1. Fetch Instructor Business Name
+  const { data: instructor } = await supabase
+    .from('instructors')
+    .select('business_name')
+    .eq('id', instructor_id)
+    .single();
+
+  // 2. Fetch Dynamic Pricing Tiers from Database
+  const { data: tiers } = await supabase
+    .from('pricing_tiers')
+    .select('*')
+    .eq('instructor_id', instructor_id)
+    .order('weekly_price', { ascending: true });
+
+  if (!instructor || !tiers || tiers.length === 0) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <p className="text-gray-500 font-medium">No active pricing tiers found for this dojo.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto text-center">
+        <h1 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">
+          {instructor.business_name}
+        </h1>
+        <p className="mt-3 text-xl text-gray-500">
+          Select a membership option to begin student enrollment.
+        </p>
+      </div>
+
+      <div className="mt-12 max-w-6xl mx-auto grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {tiers.map((tier: PricingTier) => {
+          const effectiveUpfrontFee = Number(tier.upfront_fee || tier.joining_fee || 0);
+
+          return (
+            <div
+              key={tier.id}
+              className={`bg-white rounded-2xl p-6 flex flex-col justify-between relative ${
+                tier.is_popular
+                  ? 'shadow-md border-2 border-black'
+                  : 'shadow-sm border border-gray-200'
+              }`}
+            >
+              {tier.is_popular && (
+                <div className="absolute -top-3 right-4 bg-black text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                  Popular
+                </div>
+              )}
+              <div>
+                <h2 className="text-base font-bold text-gray-900">{tier.name}</h2>
+                <p className="text-xs text-gray-500 mt-1">
+                  {tier.commitment_weeks > 0 ? `${tier.commitment_weeks} Weeks` : 'Month-to-Month'} • {tier.days_per_week} Day{tier.days_per_week > 1 ? 's' : ''}/wk
+                </p>
+
+                <div className="mt-4">
+                  <span className="text-3xl font-extrabold text-gray-900">
+                    ${tier.term_price > 0 ? tier.term_price : tier.recurring_price}
+                  </span>
+                  <span className="text-sm text-gray-500">
+                    {tier.term_price > 0 ? ' total' : ` / ${tier.billing_interval || 'month'}`}
+                  </span>
+                </div>
+
+                {effectiveUpfrontFee > 0 ? (
+                  <p className="text-xs text-amber-700 bg-amber-50 p-2 rounded mt-2 border border-amber-200">
+                    +${effectiveUpfrontFee}.00 {tier.tier_type === 'tfn' ? 'Joining Fee' : 'Initial Deposit'}
+                  </p>
+                ) : (
+                  <p className="text-xs text-green-700 bg-green-50 p-2 rounded mt-2 border border-green-200">
+                    ★ NO Joining Fee (Save $100)
+                  </p>
+                )}
+
+                {tier.savings_text && (
+                  <p className="text-xs font-semibold text-gray-700 mt-2">
+                    {tier.savings_text}
+                  </p>
+                )}
+              </div>
+
+              <Link
+                href={`/pay/${instructor_id}?tier_id=${tier.id}`}
+                className={`mt-8 block w-full text-center font-semibold py-2.5 rounded-xl transition text-sm ${
+                  tier.is_popular
+                    ? 'bg-black text-white hover:bg-gray-800'
+                    : 'bg-gray-900 text-white hover:bg-gray-800'
+                }`}
+              >
+                Enroll Now
+              </Link>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="app/globals.css">
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0a0a0a;
+    --foreground: #ededed;
+  }
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+</file>
+
+<file path="app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Create Next App",
+  description: "Generated by create next app",
+};
+
+export default function RootLayout({ children }: LayoutProps<"/">) {
+  return (
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+    >
+      <body className="min-h-full flex flex-col">{children}</body>
+    </html>
+  );
+}
+</file>
+
+<file path="app/page.tsx">
+import Image from "next/image";
+
+export default function Home() {
+  return (
+    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
+      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
+        <Image
+          className="dark:invert h-5 w-[100px]"
+          src="/next.svg"
+          alt="Next.js logo"
+          width={100}
+          height={20}
+          priority
+        />
+        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
+          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
+            To get started, edit the{" "}
+            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
+              page.tsx
+            </code>{" "}
+            file.
+          </h1>
+          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
+            Looking for a starting point or more instructions? Head over to{" "}
+            <a
+              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+              className="font-medium text-zinc-950 dark:text-zinc-50"
+            >
+              Templates
+            </a>{" "}
+            or the{" "}
+            <a
+              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+              className="font-medium text-zinc-950 dark:text-zinc-50"
+            >
+              Learning
+            </a>{" "}
+            center.
+          </p>
+        </div>
+        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
+          <a
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
+            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <Image
+              className="dark:invert h-[14px] w-4"
+              src="/vercel.svg"
+              alt="Vercel logomark"
+              width={16}
+              height={14}
+            />
+            Deploy Now
+          </a>
+          <a
+            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
+            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Documentation
+          </a>
+        </div>
+      </main>
+    </div>
+  );
+}
+</file>
+
+<file path="lib/stripe.ts">
+import Stripe from 'stripe';
+
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: '2026-08-26.dahlia' as any, // Updates to the latest stable Stripe API version
+  appInfo: {
+    name: 'Dojo Billing App',
+    version: '1.0.0',
+  },
+});
+</file>
+
+<file path="lib/supabase.ts">
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+// Client for public / frontend queries
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Admin client for backend API routes (bypasses Row Level Security)
+export const getSupabaseAdmin = () => {
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+  return createClient(supabaseUrl, serviceRoleKey);
+};
+</file>
+
+<file path="public/file.svg">
+<svg fill="none" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg"><path d="M14.5 13.5V5.41a1 1 0 0 0-.3-.7L9.8.29A1 1 0 0 0 9.08 0H1.5v13.5A2.5 2.5 0 0 0 4 16h8a2.5 2.5 0 0 0 2.5-2.5m-1.5 0v-7H8v-5H3v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1M9.5 5V2.12L12.38 5zM5.13 5h-.62v1.25h2.12V5zm-.62 3h7.12v1.25H4.5zm.62 3h-.62v1.25h7.12V11z" clip-rule="evenodd" fill="#666" fill-rule="evenodd"/></svg>
+</file>
+
+<file path="public/globe.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
+</file>
+
+<file path="public/next.svg">
+<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 394 80"><path fill="#000" d="M262 0h68.5v12.7h-27.2v66.6h-13.6V12.7H262V0ZM149 0v12.7H94v20.4h44.3v12.6H94v21h55v12.6H80.5V0h68.7zm34.3 0h-17.8l63.8 79.4h17.9l-32-39.7 32-39.6h-17.9l-23 28.6-23-28.6zm18.3 56.7-9-11-27.1 33.7h17.8l18.3-22.7z"/><path fill="#000" d="M81 79.3 17 0H0v79.3h13.6V17l50.2 62.3H81Zm252.6-.4c-1 0-1.8-.4-2.5-1s-1.1-1.6-1.1-2.6.3-1.8 1-2.5 1.6-1 2.6-1 1.8.3 2.5 1a3.4 3.4 0 0 1 .6 4.3 3.7 3.7 0 0 1-3 1.8zm23.2-33.5h6v23.3c0 2.1-.4 4-1.3 5.5a9.1 9.1 0 0 1-3.8 3.5c-1.6.8-3.5 1.3-5.7 1.3-2 0-3.7-.4-5.3-1s-2.8-1.8-3.7-3.2c-.9-1.3-1.4-3-1.4-5h6c.1.8.3 1.6.7 2.2s1 1.2 1.6 1.5c.7.4 1.5.5 2.4.5 1 0 1.8-.2 2.4-.6a4 4 0 0 0 1.6-1.8c.3-.8.5-1.8.5-3V45.5zm30.9 9.1a4.4 4.4 0 0 0-2-3.3 7.5 7.5 0 0 0-4.3-1.1c-1.3 0-2.4.2-3.3.5-.9.4-1.6 1-2 1.6a3.5 3.5 0 0 0-.3 4c.3.5.7.9 1.3 1.2l1.8 1 2 .5 3.2.8c1.3.3 2.5.7 3.7 1.2a13 13 0 0 1 3.2 1.8 8.1 8.1 0 0 1 3 6.5c0 2-.5 3.7-1.5 5.1a10 10 0 0 1-4.4 3.5c-1.8.8-4.1 1.2-6.8 1.2-2.6 0-4.9-.4-6.8-1.2-2-.8-3.4-2-4.5-3.5a10 10 0 0 1-1.7-5.6h6a5 5 0 0 0 3.5 4.6c1 .4 2.2.6 3.4.6 1.3 0 2.5-.2 3.5-.6 1-.4 1.8-1 2.4-1.7a4 4 0 0 0 .8-2.4c0-.9-.2-1.6-.7-2.2a11 11 0 0 0-2.1-1.4l-3.2-1-3.8-1c-2.8-.7-5-1.7-6.6-3.2a7.2 7.2 0 0 1-2.4-5.7 8 8 0 0 1 1.7-5 10 10 0 0 1 4.3-3.5c2-.8 4-1.2 6.4-1.2 2.3 0 4.4.4 6.2 1.2 1.8.8 3.2 2 4.3 3.4 1 1.4 1.5 3 1.5 5h-5.8z"/></svg>
+</file>
+
+<file path="public/vercel.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1155 1000"><path d="m577.3 0 577.4 1000H0z" fill="#fff"/></svg>
+</file>
+
+<file path="public/window.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
+</file>
+
+<file path=".gitignore">
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+</file>
+
+<file path="eslint.config.mjs">
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+]);
+
+export default eslintConfig;
+</file>
+
+<file path="next.config.ts">
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+  reactCompiler: true,
+};
+
+export default nextConfig;
+</file>
+
+<file path="postcss.config.mjs">
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+export default config;
+</file>
+
+<file path="README.md">
+This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+
+## Getting Started
+
+First, run the development server:
+
+```bash
+npm run dev
+# or
+yarn dev
+# or
+pnpm dev
+# or
+bun dev
+```
+
+Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+
+You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+
+This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+
+## Learn More
+
+To learn more about Next.js, take a look at the following resources:
+
+- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
+- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+
+You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+
+## Deploy on Vercel
+
+The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+
+Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+</file>
+
+<file path="tsconfig.json">
+{
+  "compilerOptions": {
+    "target": "ES2017",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
+    "paths": {
+      "@/*": ["./*"]
+    }
+  },
+  "include": [
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    "**/*.mts"
+  ],
+  "exclude": ["node_modules"]
+}
+</file>
+
+<file path="app/api/webhooks/stripe/route.ts">
+import { NextResponse } from 'next/server';
+import { stripe } from '@/lib/stripe';
+import { getSupabaseAdmin } from '@/lib/supabase';
+
+export async function POST(request: Request) {
+  const body = await request.text();
+  const signature = request.headers.get('stripe-signature');
+
+  if (!signature) {
+    return NextResponse.json({ error: 'Missing stripe-signature header' }, { status: 400 });
+  }
+
+  let event;
+
+  try {
+    event = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET!
+    );
+  } catch (err: any) {
+    console.error(`Webhook signature verification failed: ${err.message}`);
+    return NextResponse.json({ error: `Webhook error: ${err.message}` }, { status: 400 });
+  }
+
+  // Use the admin client to bypass Row Level Security for backend inserts
+  const supabaseAdmin = getSupabaseAdmin();
+
+  // 1. Handle successful checkout completion
+  if (event.type === 'checkout.session.completed') {
+    const session = event.data.object as any;
+    const metadata = session.metadata || {};
+    
+    // A. Event Registration Handler
+  if (metadata.isEventBooking === 'true') {
+      try {
+        await supabaseAdmin.from('event_registrations').insert({
+          event_id: metadata.eventId,
+          instructor_id: metadata.instructorId,
+          student_name: metadata.studentName,
+          parent_name: metadata.parentName,
+          parent_email: metadata.parentEmail,
+          amount_paid: session.amount_total ? session.amount_total / 100 : 0,
+          stripe_session_id: session.id,
+          status: 'confirmed',
+        });
+        console.log(`Event registration saved for ${metadata.studentName}`);
+      } catch (err: any) {
+        console.error('Error saving event registration:', err.message);
+      }
+      return NextResponse.json({ received: true });
+    }
+    
+    const {
+      instructorId,
+      studentName,
+      parentName,
+      parentMobile,
+      parentEmail,
+      cadence,
+      selectedTier,
+      joiningFee,
+      initialDeposit,
+    } = metadata;
+
+    if (!instructorId || !studentName || !parentEmail) {
+      console.error('Webhook payload missing required metadata');
+      return NextResponse.json({ received: true });
+    }
+
+    try {
+      // Identity Resolution & Deduplication Logic
+      const emailInput = parentEmail.trim().toLowerCase();
+      const mobileInput = parentMobile ? parentMobile.replace(/\s+/g, '') : '';
+      const nameParts = studentName.trim().split(' ');
+      const firstName = nameParts[0];
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : firstName;
+
+      // Search for an existing student under this instructor using admin client
+      const { data: existingStudent } = await supabaseAdmin
+        .from('students')
+        .select('id, joining_fee_paid')
+        .eq('instructor_id', instructorId)
+        .ilike('student_last_name', lastName)
+        .or(
+          `parent_email.eq.${emailInput},` +
+          `parent_email_secondary.eq.${emailInput}` +
+          (mobileInput ? `,parent_mobile.eq.${mobileInput},parent_mobile_secondary.eq.${mobileInput}` : '')
+        )
+        .maybeSingle();
+
+      let studentId: string;
+      const feeWasPaid = Number(joiningFee || 0) > 0;
+
+      if (existingStudent) {
+        studentId = existingStudent.id;
+
+        // Update secondary contact info and join fee status
+        await supabaseAdmin
+          .from('students')
+          .update({
+            parent_name: parentName,
+            parent_email_secondary: emailInput,
+            parent_mobile_secondary: mobileInput,
+            joining_fee_paid: existingStudent.joining_fee_paid || feeWasPaid,
+            joining_fee_paid_at: feeWasPaid ? new Date().toISOString() : undefined,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', studentId);
+      } else {
+        // Create new student profile via admin client
+        const { data: newStudent, error: createError } = await supabaseAdmin
+          .from('students')
+          .insert({
+            instructor_id: instructorId,
+            student_name: studentName,
+            student_first_name: firstName,
+            student_last_name: lastName,
+            parent_name: parentName,
+            parent_email: emailInput,
+            parent_mobile: mobileInput,
+            joining_fee_paid: feeWasPaid,
+            joining_fee_paid_at: feeWasPaid ? new Date().toISOString() : null,
+          })
+          .select('id')
+          .single();
+
+        if (createError || !newStudent) {
+          throw new Error(`Failed to insert student record: ${createError?.message}`);
+        }
+
+        studentId = newStudent.id;
+      }
+
+      const subscriptionId = typeof session.subscription === 'string' ? session.subscription : null;
+
+      // Insert Enrollment Record via admin client
+      const { error: enrollmentError } = await supabaseAdmin
+        .from('enrollments')
+        .insert({
+          student_id: studentId,
+          instructor_id: instructorId,
+          tier_id: selectedTier,
+          stripe_session_id: session.id,
+          stripe_customer_id: typeof session.customer === 'string' ? session.customer : null,
+          stripe_subscription_id: subscriptionId,
+          payment_cadence: cadence,
+          amount_paid: session.amount_total ? session.amount_total / 100 : 0,
+          status: 'active',
+        });
+
+      if (enrollmentError) {
+        console.error('Failed to create enrollment record:', enrollmentError.message);
+      } else {
+        console.log(`Successfully completed enrollment for student ${studentId}`);
+      }
+
+      // Handle commitment weeks subscription schedule
+      if (subscriptionId) {
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        const commitmentWeeks = Number(subscription.metadata?.commitmentWeeks || 0);
+
+        if (commitmentWeeks > 0) {
+          const schedule = await stripe.subscriptionSchedules.create({
+            from_subscription: subscriptionId,
+          });
+
+          const startDate = schedule.phases[0].start_date;
+          const endDate = startDate + commitmentWeeks * 7 * 24 * 60 * 60;
+
+          await stripe.subscriptionSchedules.update(schedule.id, {
+            end_behavior: 'cancel',
+            phases: [
+              {
+                start_date: startDate,
+                end_date: endDate,
+                items: schedule.phases[0].items.map((item) => ({
+                  price: typeof item.price === 'string' ? item.price : item.price.id,
+                  quantity: item.quantity,
+                })),
+              },
+            ],
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error('Database sync error in webhook:', err.message);
+      return NextResponse.json({ error: 'Database execution failed' }, { status: 500 });
+    }
+
+  }
+
+  // 2. Handle subscription natural completion / expiration
+  if (event.type === 'customer.subscription.deleted') {
+    const subscription = event.data.object as any;
+
+    try {
+      const { error } = await supabaseAdmin
+        .from('enrollments')
+        .update({
+          status: 'completed',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('stripe_subscription_id', subscription.id);
+
+      if (error) {
+        console.error(`Failed to update enrollment status for subscription ${subscription.id}:`, error.message);
+      } else {
+        console.log(`Enrollment marked as completed for subscription ${subscription.id}`);
+      }
+    } catch (err: any) {
+      console.error('Error updating expired subscription in webhook:', err.message);
+      return NextResponse.json({ error: 'Database execution failed' }, { status: 500 });
+    }
+  }
+
+  return NextResponse.json({ received: true });
+}
+</file>
+
+<file path="package.json">
+{
+  "name": "dojo-billing-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@stripe/stripe-js": "^9.16.0",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
+    "next": "16.3.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "stripe": "^22.6.2",
+    "twilio": "^6.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
+</file>
+
+</files>
