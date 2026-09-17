@@ -116,195 +116,6 @@ tsconfig.json
 <files>
 This section contains the contents of the repository's files.
 
-<file path="app/api/dashboard/stats/route.ts">
-import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase-server';
-
-export async function GET() {
-  try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data: instructor } = await supabase
-      .from('instructors')
-      .select('business_name')
-      .eq('id', user.id)
-      .single();
-
-    const { data: enrollments } = await supabase
-      .from('enrollments')
-      .select('amount_paid, payment_cadence, status')
-      .eq('instructor_id', user.id);
-
-    let activeCount = 0;
-    let pastDueCount = 0;
-    let estimatedMonthly = 0;
-
-    enrollments?.forEach((item) => {
-      if (item.status === 'active') {
-        activeCount += 1;
-        if (item.payment_cadence === 'weekly') {
-          estimatedMonthly += Number(item.amount_paid || 0) * 4.33;
-        } else {
-          estimatedMonthly += Number(item.amount_paid || 0) / 3;
-        }
-      } else if (item.status === 'past_due') {
-        pastDueCount += 1;
-      }
-    });
-
-    return NextResponse.json({
-      stats: {
-        activeStudentsCount: activeCount,
-        pastDueCount,
-        monthlyRevenue: Math.round(estimatedMonthly),
-        businessName: instructor?.business_name || 'My Dojo',
-      },
-    });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-</file>
-
-<file path="app/api/events/route.ts">
-import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase-server';
-
-export async function GET() {
-  try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data, error } = await supabase
-      .from('events')
-      .select('*')
-      .eq('instructor_id', user.id)
-      .order('event_date', { ascending: true });
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ events: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { title, amount, event_date } = await request.json();
-
-    const { data, error } = await supabase
-      .from('events')
-      .insert({
-        instructor_id: user.id,
-        title,
-        amount: Number(amount),
-        event_date,
-      })
-      .select()
-      .single();
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ event: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-</file>
-
-<file path="app/api/tiers/route.ts">
-import { NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase-server';
-
-export async function GET() {
-  try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data, error } = await supabase
-      .from('pricing_tiers')
-      .select('*')
-      .eq('instructor_id', user.id)
-      .order('created_at', { ascending: true });
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ tiers: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-
-export async function POST(request: Request) {
-  try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const body = await request.json();
-    const payload = { ...body, instructor_id: user.id };
-
-    const { data, error } = await supabase
-      .from('pricing_tiers')
-      .insert(payload)
-      .select()
-      .single();
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ tier: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-
-export async function PUT(request: Request) {
-  try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id, ...payload } = await request.json();
-
-    const { data, error } = await supabase
-      .from('pricing_tiers')
-      .update(payload)
-      .eq('id', id)
-      .eq('instructor_id', user.id)
-      .select()
-      .single();
-
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ tier: data });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
-  }
-}
-</file>
-
 <file path="app/api/auth/login/route.ts">
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
@@ -605,6 +416,117 @@ export async function POST(request: Request) {
 }
 </file>
 
+<file path="app/api/dashboard/stats/route.ts">
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase-server';
+
+export async function GET() {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data: instructor } = await supabase
+      .from('instructors')
+      .select('business_name')
+      .eq('id', user.id)
+      .single();
+
+    const { data: enrollments } = await supabase
+      .from('enrollments')
+      .select('amount_paid, payment_cadence, status')
+      .eq('instructor_id', user.id);
+
+    let activeCount = 0;
+    let pastDueCount = 0;
+    let estimatedMonthly = 0;
+
+    enrollments?.forEach((item) => {
+      if (item.status === 'active') {
+        activeCount += 1;
+        if (item.payment_cadence === 'weekly') {
+          estimatedMonthly += Number(item.amount_paid || 0) * 4.33;
+        } else {
+          estimatedMonthly += Number(item.amount_paid || 0) / 3;
+        }
+      } else if (item.status === 'past_due') {
+        pastDueCount += 1;
+      }
+    });
+
+    return NextResponse.json({
+      stats: {
+        activeStudentsCount: activeCount,
+        pastDueCount,
+        monthlyRevenue: Math.round(estimatedMonthly),
+        businessName: instructor?.business_name || 'My Dojo',
+      },
+    });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+</file>
+
+<file path="app/api/events/route.ts">
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase-server';
+
+export async function GET() {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data, error } = await supabase
+      .from('events')
+      .select('*')
+      .eq('instructor_id', user.id)
+      .order('event_date', { ascending: true });
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ events: data });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { title, amount, event_date } = await request.json();
+
+    const { data, error } = await supabase
+      .from('events')
+      .insert({
+        instructor_id: user.id,
+        title,
+        amount: Number(amount),
+        event_date,
+      })
+      .select()
+      .single();
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ event: data });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
+</file>
+
 <file path="app/api/students/route.ts">
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase-server';
@@ -653,167 +575,81 @@ export async function GET() {
 }
 </file>
 
-<file path="app/dashboard/events/page.tsx">
-'use client';
+<file path="app/api/tiers/route.ts">
+import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase-server';
 
-import { useEffect, useState } from 'react';
+export async function GET() {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-interface EventRecord {
-  id: string;
-  title: string;
-  amount: number;
-  event_date: string;
-  created_at: string;
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data, error } = await supabase
+      .from('pricing_tiers')
+      .select('*')
+      .eq('instructor_id', user.id)
+      .order('created_at', { ascending: true });
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ tiers: data });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
 }
 
-export default function DashboardEventsPage() {
-  const [events, setEvents] = useState<EventRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [title, setTitle] = useState('');
-  const [amount, setAmount] = useState('');
-  const [eventDate, setEventDate] = useState('');
+export async function POST(request: Request) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
 
-  const loadEvents = async () => {
-    try {
-      const res = await fetch('/api/events');
-      if (res.ok) {
-        const data = await res.json();
-        setEvents(data.events || []);
-      }
-    } catch (err) {
-      console.error('Failed to load events:', err);
-    } finally {
-      setLoading(false);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-  };
 
-  useEffect(() => {
-    loadEvents();
-  }, []);
+    const body = await request.json();
+    const payload = { ...body, instructor_id: user.id };
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
+    const { data, error } = await supabase
+      .from('pricing_tiers')
+      .insert(payload)
+      .select()
+      .single();
 
-    const res = await fetch('/api/events', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title,
-        amount,
-        event_date: eventDate,
-      }),
-    });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ tier: data });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
 
-    if (!res.ok) {
-      const data = await res.json();
-      alert(`Error creating event: ${data.error}`);
-    } else {
-      setIsModalOpen(false);
-      setTitle('');
-      setAmount('');
-      setEventDate('');
-      loadEvents();
+export async function PUT(request: Request) {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-  };
 
-  if (loading) return <div className="text-xs text-gray-500 font-medium">Loading events...</div>;
+    const { id, ...payload } = await request.json();
 
-  return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Events & Gradings</h1>
-          <p className="text-xs text-gray-600 mt-0.5">Manage belt gradings and tournaments</p>
-        </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="bg-black text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-gray-800 transition shadow-sm cursor-pointer"
-        >
-          + Create Event
-        </button>
-      </div>
+    const { data, error } = await supabase
+      .from('pricing_tiers')
+      .update(payload)
+      .eq('id', id)
+      .eq('instructor_id', user.id)
+      .select()
+      .single();
 
-      {events.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center space-y-2 shadow-sm">
-          <p className="text-sm font-bold text-gray-900">No events scheduled</p>
-          <p className="text-xs text-gray-600 max-w-sm mx-auto">
-            Create an event to allow parents to register and pay online.
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {events.map((evt) => (
-            <div key={evt.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-2">
-              <div className="flex justify-between items-start">
-                <h3 className="text-lg font-bold text-gray-900">{evt.title}</h3>
-                <span className="text-lg font-extrabold text-gray-900">${evt.amount}</span>
-              </div>
-              <p className="text-xs text-gray-500 font-medium">
-                📅 {new Date(evt.event_date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {isModalOpen && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-gray-100">
-            <h2 className="text-xl font-bold text-gray-900">Create New Event</h2>
-            <form onSubmit={handleCreate} className="space-y-3 text-xs">
-              <div>
-                <label className="block font-bold text-gray-900 mb-1">Title</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Autumn Belt Grading"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-black text-gray-900"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-gray-900 mb-1">Fee ($)</label>
-                  <input
-                    type="number"
-                    required
-                    placeholder="65.00"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-black text-gray-900"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-gray-900 mb-1">Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={eventDate}
-                    onChange={(e) => setEventDate(e.target.value)}
-                    className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-black text-gray-900"
-                  />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2 pt-3 border-t">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 rounded-xl font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="px-4 py-2 rounded-xl font-bold bg-black text-white hover:bg-gray-800 cursor-pointer">
-                  Save Event
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ tier: data });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
 }
 </file>
 
@@ -2029,6 +1865,170 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 }
 </file>
 
+<file path="app/dashboard/events/page.tsx">
+'use client';
+
+import { useEffect, useState } from 'react';
+
+interface EventRecord {
+  id: string;
+  title: string;
+  amount: number;
+  event_date: string;
+  created_at: string;
+}
+
+export default function DashboardEventsPage() {
+  const [events, setEvents] = useState<EventRecord[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [amount, setAmount] = useState('');
+  const [eventDate, setEventDate] = useState('');
+
+  const loadEvents = async () => {
+    try {
+      const res = await fetch('/api/events');
+      if (res.ok) {
+        const data = await res.json();
+        setEvents(data.events || []);
+      }
+    } catch (err) {
+      console.error('Failed to load events:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadEvents();
+  }, []);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    const res = await fetch('/api/events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title,
+        amount,
+        event_date: eventDate,
+      }),
+    });
+
+    if (!res.ok) {
+      const data = await res.json();
+      alert(`Error creating event: ${data.error}`);
+    } else {
+      setIsModalOpen(false);
+      setTitle('');
+      setAmount('');
+      setEventDate('');
+      loadEvents();
+    }
+  };
+
+  if (loading) return <div className="text-xs text-gray-500 font-medium">Loading events...</div>;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Events & Gradings</h1>
+          <p className="text-xs text-gray-600 mt-0.5">Manage belt gradings and tournaments</p>
+        </div>
+        <button
+          onClick={() => setIsModalOpen(true)}
+          className="bg-black text-white px-4 py-2 rounded-xl text-xs font-semibold hover:bg-gray-800 transition shadow-sm cursor-pointer"
+        >
+          + Create Event
+        </button>
+      </div>
+
+      {events.length === 0 ? (
+        <div className="bg-white border border-gray-200 rounded-2xl p-8 text-center space-y-2 shadow-sm">
+          <p className="text-sm font-bold text-gray-900">No events scheduled</p>
+          <p className="text-xs text-gray-600 max-w-sm mx-auto">
+            Create an event to allow parents to register and pay online.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {events.map((evt) => (
+            <div key={evt.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-2">
+              <div className="flex justify-between items-start">
+                <h3 className="text-lg font-bold text-gray-900">{evt.title}</h3>
+                <span className="text-lg font-extrabold text-gray-900">${evt.amount}</span>
+              </div>
+              <p className="text-xs text-gray-500 font-medium">
+                📅 {new Date(evt.event_date).toLocaleDateString('en-AU', { day: 'numeric', month: 'short', year: 'numeric' })}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full space-y-4 shadow-2xl border border-gray-100">
+            <h2 className="text-xl font-bold text-gray-900">Create New Event</h2>
+            <form onSubmit={handleCreate} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-gray-900 mb-1">Title</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Autumn Belt Grading"
+                  value={title}
+                  onChange={(e) => setTitle(e.target.value)}
+                  className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-black text-gray-900"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-gray-900 mb-1">Fee ($)</label>
+                  <input
+                    type="number"
+                    required
+                    placeholder="65.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-black text-gray-900"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-gray-900 mb-1">Date</label>
+                  <input
+                    type="date"
+                    required
+                    value={eventDate}
+                    onChange={(e) => setEventDate(e.target.value)}
+                    className="w-full border border-gray-300 rounded-xl px-3 py-2 focus:ring-2 focus:ring-black text-gray-900"
+                  />
+                </div>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-xl font-bold text-gray-700 hover:bg-gray-100 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="px-4 py-2 rounded-xl font-bold bg-black text-white hover:bg-gray-800 cursor-pointer">
+                  Save Event
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
 <file path="app/dashboard/students/page.tsx">
 'use client';
 
@@ -2179,6 +2179,176 @@ export default function StudentRosterPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+</file>
+
+<file path="app/dashboard/layout.tsx">
+'use client';
+
+import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+      router.refresh();
+      router.push('/login');
+    } catch (err) {
+      console.error('Logout error:', err);
+    }
+  };
+
+  const navItems = [
+    { label: 'Overview', href: '/dashboard' },
+    { label: 'Pricing Tiers', href: '/dashboard/tiers' },
+    { label: 'Students Roster', href: '/dashboard/students' },
+    { label: 'Events & Gradings', href: '/dashboard/events' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Sidebar Navigation */}
+      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col justify-between p-6">
+        <div className="space-y-6">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Instructor Portal</h2>
+            <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">Dojo Management</p>
+          </div>
+
+          <nav className="space-y-1">
+            {navItems.map((item) => {
+              const active = pathname === item.href;
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`block px-3 py-2 rounded-xl text-xs font-semibold transition ${
+                    active
+                      ? 'bg-black text-white'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
+                >
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+
+        <button
+          onClick={handleSignOut}
+          className="w-full text-left px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
+        >
+          Sign Out
+        </button>
+      </aside>
+
+      {/* Main Content View */}
+      <main className="flex-1 p-8 overflow-y-auto">
+        <div className="max-w-5xl mx-auto">{children}</div>
+      </main>
+    </div>
+  );
+}
+</file>
+
+<file path="app/login/page.tsx">
+'use client';
+
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+
+export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const router = useRouter();
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg(null);
+
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        setErrorMsg(data.error || 'Invalid login credentials');
+        setLoading(false);
+      } else {
+        // Refresh server components and navigate to dashboard
+        router.refresh();
+        router.push('/dashboard');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'An unexpected error occurred');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-gray-200 p-8 space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Instructor Portal</h1>
+          <p className="text-xs text-gray-500 mt-1">Sign in to manage your dojo</p>
+        </div>
+
+        {errorMsg && (
+          <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs font-medium border border-red-100">
+            {errorMsg}
+          </div>
+        )}
+
+        <form onSubmit={handleLogin} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+              Email Address
+            </label>
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black text-gray-900"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
+              Password
+            </label>
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black text-gray-900"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full bg-black text-white font-semibold py-2.5 rounded-xl hover:bg-gray-800 transition text-sm disabled:opacity-50 cursor-pointer"
+          >
+            {loading ? 'Authenticating...' : 'Sign In'}
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
@@ -2571,80 +2741,6 @@ export default function PricingTiersPage() {
 }
 </file>
 
-<file path="app/dashboard/layout.tsx">
-'use client';
-
-import Link from 'next/link';
-import { usePathname, useRouter } from 'next/navigation';
-
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  const router = useRouter();
-
-  const handleSignOut = async () => {
-    try {
-      await fetch('/api/auth/logout', { method: 'POST' });
-      router.refresh();
-      router.push('/login');
-    } catch (err) {
-      console.error('Logout error:', err);
-    }
-  };
-
-  const navItems = [
-    { label: 'Overview', href: '/dashboard' },
-    { label: 'Pricing Tiers', href: '/dashboard/tiers' },
-    { label: 'Students Roster', href: '/dashboard/students' },
-    { label: 'Events & Gradings', href: '/dashboard/events' },
-  ];
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar Navigation */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col justify-between p-6">
-        <div className="space-y-6">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">Instructor Portal</h2>
-            <p className="text-[10px] text-gray-400 uppercase tracking-wider mt-0.5">Dojo Management</p>
-          </div>
-
-          <nav className="space-y-1">
-            {navItems.map((item) => {
-              const active = pathname === item.href;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`block px-3 py-2 rounded-xl text-xs font-semibold transition ${
-                    active
-                      ? 'bg-black text-white'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  }`}
-                >
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        </div>
-
-        <button
-          onClick={handleSignOut}
-          className="w-full text-left px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 rounded-xl transition cursor-pointer"
-        >
-          Sign Out
-        </button>
-      </aside>
-
-      {/* Main Content View */}
-      <main className="flex-1 p-8 overflow-y-auto">
-        <div className="max-w-5xl mx-auto">{children}</div>
-      </main>
-    </div>
-  );
-}
-</file>
-
 <file path="app/dashboard/page.tsx">
 'use client';
 
@@ -2724,99 +2820,38 @@ export default function DashboardPage() {
 }
 </file>
 
-<file path="app/login/page.tsx">
-'use client';
-
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-
-export default function LoginPage() {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const router = useRouter();
-
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setErrorMsg(null);
-
-    try {
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok || data.error) {
-        setErrorMsg(data.error || 'Invalid login credentials');
-        setLoading(false);
-      } else {
-        // Refresh server components and navigate to dashboard
-        router.refresh();
-        router.push('/dashboard');
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'An unexpected error occurred');
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-sm border border-gray-200 p-8 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Instructor Portal</h1>
-          <p className="text-xs text-gray-500 mt-1">Sign in to manage your dojo</p>
-        </div>
-
-        {errorMsg && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-lg text-xs font-medium border border-red-100">
-            {errorMsg}
-          </div>
-        )}
-
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-              Email Address
-            </label>
-            <input
-              type="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black text-gray-900"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-gray-700 uppercase tracking-wider mb-1">
-              Password
-            </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border border-gray-300 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-black text-gray-900"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-black text-white font-semibold py-2.5 rounded-xl hover:bg-gray-800 transition text-sm disabled:opacity-50 cursor-pointer"
-          >
-            {loading ? 'Authenticating...' : 'Sign In'}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
+<file path="package.json">
+{
+  "name": "dojo-billing-app",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@stripe/stripe-js": "^9.16.0",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.116.0",
+    "next": "16.3.5",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "stripe": "^22.6.2",
+    "twilio": "^6.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "16.3.5",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
 }
 </file>
 
@@ -2900,14 +2935,15 @@ if (event.type === 'checkout.session.completed') {
     const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : firstName;
 
     // Search for existing student by instructor and primary parent email first
-    const { data: existingStudent } = await supabaseAdmin
-      .from('students')
-      .select('id, joining_fee_paid')
-      .eq('instructor_id', instructorId)
-      .ilike('student_last_name', lastName)
-      .eq('parent_email', emailInput)
-      .maybeSingle();
-
+const { data: existingStudent } = await supabaseAdmin
+  .from('students')
+  .select('id, joining_fee_paid')
+  .eq('instructor_id', instructorId)
+  .ilike('student_first_name', firstName)
+  .ilike('student_last_name', lastName)
+  .eq('parent_email', emailInput)
+  .maybeSingle();
+  
     let studentId: string;
     const feeWasPaid = Number(joiningFee || 0) > 0;
 
@@ -3001,41 +3037,6 @@ if (event.type === 'checkout.session.completed') {
   }
 
   return NextResponse.json({ received: true });
-}
-</file>
-
-<file path="package.json">
-{
-  "name": "dojo-billing-app",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@stripe/stripe-js": "^9.16.0",
-    "@supabase/ssr": "^0.12.7",
-    "@supabase/supabase-js": "^2.116.0",
-    "next": "16.3.5",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "stripe": "^22.6.2",
-    "twilio": "^6.1.1"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "babel-plugin-react-compiler": "1.0.0",
-    "eslint": "^9",
-    "eslint-config-next": "16.3.5",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  }
 }
 </file>
 

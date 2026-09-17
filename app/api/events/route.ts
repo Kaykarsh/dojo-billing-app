@@ -32,7 +32,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { title, amount, event_date } = await request.json();
+    const body = await request.json();
+    const {
+      title,
+      amount,
+      event_date,
+      deadline_date,
+      description,
+      location,
+      capacity,
+      event_type,
+      has_waiver,
+      waiver_text,
+      form_fields,
+    } = body;
 
     const { data, error } = await supabase
       .from('events')
@@ -41,6 +54,14 @@ export async function POST(request: Request) {
         title,
         amount: Number(amount),
         event_date,
+        deadline_date: deadline_date || null,
+        description: description || null,
+        location: location || null,
+        capacity: capacity ? Number(capacity) : null,
+        event_type: event_type || 'Tournament',
+        has_waiver: Boolean(has_waiver),
+        waiver_text: waiver_text || null,
+        form_fields: form_fields || [], // Stored directly as JSONB array
       })
       .select()
       .single();
